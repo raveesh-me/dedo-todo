@@ -1,0 +1,42 @@
+version: v2
+modules:
+  - path: proto
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/bufbuild/protovalidate
+  # The options module, at the same release as the lint plugin, generators
+  # and runtime pinned in go.mod. dedo upgrade moves them together.
+  - buf.build/lc-commerce/dedo:v0.43.5
+  # commerce.auth.v2 options: tenant, calls, permissions. Its Go guard is
+  # github.com/GoHighLevel/commerce-auth/go in go.mod.
+  - buf.build/lc-commerce/commerce-auth
+  # commerce.obs.v1 options: tier, alert route, dependency reasons.
+  - buf.build/lc-commerce/commerce-obs:v0.1.0
+lint:
+  use:
+    - STANDARD
+    - COMMENTS
+    # Every rule of buf-plugin-dedo-lint: AIP, ZALANDO, DEDO and your house
+    # rules. dedo.yaml, next to this file, chooses which of them run; list
+    # none of them here, in use or except.
+    - DEDO
+  enum_zero_value_suffix: _UNSPECIFIED
+  service_suffix: Service
+  rpc_allow_google_protobuf_empty_requests: false
+  rpc_allow_google_protobuf_empty_responses: false
+breaking:
+  use:
+    - FILE
+    # buf-plugin-dedo-lint's breaking rules: what Buf's cannot see in
+    # dedo's options, such as an RPC that stops declaring an event type.
+    - DEDO_BREAKING
+  ignore_unstable_packages: true
+plugins:
+  # At the options module's release above: `dedo tools` (or make tools)
+  # installs it into $GOBIN and copies it into .tools/, with or without Go.
+  # It is referred to by path, so editors started outside a shell find it
+  # too, and runs natively: buf starts it about a dozen times per lint.
+  - plugin: .tools/buf-plugin-dedo-lint
+  # It reads dedo.yaml next to this file: the rule sets that run, the rules
+  # opted out of, and your organisation's HOUSE_* rules. See
+  # guidance/RULES.md in the dedo repository.

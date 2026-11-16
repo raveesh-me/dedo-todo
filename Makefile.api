@@ -1,0 +1,119 @@
+# Include from a service Makefile: `include Makefile.api`.
+# Deps are pinned in buf.lock; commit it. Add .tools/ to .gitignore.
+#
+# The lint plugin's release is the options module's label in buf.yaml; dedo,
+# pinned in go.mod as a Go tool, installs it into $GOBIN and copies it into
+# .tools/, where buf.yaml finds it.
+#
+# dedo init names a target api-<name> instead when the service's Makefile
+# already has one of these names.
+
+.PHONY: run generate check test tools modules vet docs docs-tunnel docs-static api-update
+
+## run: serve the API on Connect, gRPC, REST, /docs and /mcp
+run:
+	go run .
+
+## generate: generate Go, Connect, MCP tools, the REST docs and the OpenSLO
+## documents (slo/) from the protos, then tidy go.mod; run it after every
+## change to a .proto. With a backend for frontend in bff/, also generate
+## its code from bff/buf.gen.yaml
+generate:
+	buf generate
+	go tool dedo slo
+	go mod tidy
+	@if [ -f bff/buf.gen.yaml ]; then \
+		echo "buf generate --template bff/buf.gen.yaml"; \
+		buf generate --template bff/buf.gen.yaml || exit 1; \
+		echo "cd bff && go mod tidy"; \
+		cd bff && go mod tidy; \
+	fi
+
+## check: format, lint, breaking changes against API_BASE, the modules kept
+## apart, the Go rules (dedo vet) and, with a backend for frontend in bff/,
+## its generated code current and its tests; CI runs it
+# The branch breaking changes are checked against. dedo breaking compares
+# each module of buf.yaml with its own directory there, and skips one that
+# has no protos there yet, such as a module this branch adds.
+API_BASE ?= main
+# What bff/buf.gen.yaml writes: the BFF's Go code and the frontend's client.
+BFF_GEN ?= bff/gen frontend/src/gen
+
+check: tools modules vet
+	buf format --diff --exit-code
+	buf lint
+	go tool dedo breaking -against $(API_BASE)
+	@if [ -f bff/buf.gen.yaml ]; then \
+		echo "buf generate --template bff/buf.gen.yaml"; \
+		buf generate --template bff/buf.gen.yaml || exit 1; \
+		stale=$$(git status --porcelain -- $(BFF_GEN)); \
+		if [ -n "$$stale" ]; then \
+			echo "$$stale"; \
+			echo "the BFF's generated code is stale: run make generate and commit it"; \
+			exit 1; \
+		fi; \
+	fi
+	@if [ -f bff/go.mod ]; then \
+		echo "cd bff && go vet ./... && go test ./..."; \
+		cd bff && go vet ./... && go test ./...; \
+	fi
+
+## test: run the service's tests, the policy-table test among them, and
+## those of a backend for frontend in bff/, which ./... leaves out
+test:
+	go test ./...
+	@if [ -f bff/go.mod ]; then \
+		echo "cd bff && go test ./..."; \
+		cd bff && go test ./...; \
+	fi
+
+## tools: copy the lint plugin at buf.yaml's release into .tools/, fetch the house
+## rules dedo.yaml imports, and check their overrides; run it after a clone, an
+## upgrade, or a change to dedo.yaml's rules
+tools:
+	go tool dedo tools
+
+## modules: check that the modules (proto packages <context>.<m>.v<n>) stay
+## apart: no import cycle between them, shared code imports none, each one's
+## code in internal/<m>, its SQL naming only its own schema; then print the
+## module graph
+modules:
+	go tool dedo modules
+
+## vet: the Go rules, dedo's DEDO_GO_* and dedo.yaml's HOUSE_GO_*, on the
+## service and a backend for frontend in bff/: servers have dedo's
+## interceptors, handlers return declared error reasons and publish
+## declared events, and no file imports what the house rules forbid
+vet:
+	go tool dedo vet
+
+## docs: serve the REST reference (docs/index.html and openapi.json only) on
+## DOCS_ADDR until Ctrl-C
+DOCS_ADDR ?= 127.0.0.1:8099
+
+docs:
+	go tool dedo docs -addr $(DOCS_ADDR)
+
+## docs-tunnel: share the REST reference at a public Cloudflare quick-tunnel URL
+## until Ctrl-C; needs cloudflared. It never shares the service itself.
+docs-tunnel:
+	go tool dedo docs -tunnel -addr $(DOCS_ADDR)
+
+## docs-static: write the REST reference as one HTML file, DOCS_STATIC, that
+## opens from disk with no network; the first run fetches the page's scripts
+## and caches them, so later runs work offline too
+DOCS_STATIC ?= .tools/docs.html
+
+docs-static:
+	go tool dedo docs -static $(DOCS_STATIC)
+
+## api-update: move deps to their latest versions
+api-update:
+	buf dep update
+
+# Names that always exist, whatever the service's Makefile defines: CI can
+# call these. Releases before v0.15.0 had only api-check and api-generate.
+.PHONY: api-check api-generate api-test
+api-check: check
+api-generate: generate
+api-test: test

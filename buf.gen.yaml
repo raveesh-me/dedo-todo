@@ -1,0 +1,59 @@
+# Generators run through `go tool`, pinned in go.mod. Set up by dedo init.
+version: v2
+managed:
+  enabled: true
+  override:
+    # Your own API modules.
+    - file_option: go_package_prefix
+      value: github.com/raveesh-me/dedo-todo/gen/go
+    # The options module ships its generated Go code in its own Go module.
+    # The last matching override wins, so this one must stay below the
+    # catch-all above.
+    - file_option: go_package_prefix
+      module: buf.build/lc-commerce/dedo
+      value: github.com/GoHighLevel/dedo/gen/go
+  disable:
+    # These modules set go_package themselves and ship their own Go code.
+    - module: buf.build/googleapis/googleapis
+    - module: buf.build/bufbuild/protovalidate
+plugins:
+  # Every generator runs through `go tool`, pinned in go.mod, so every
+  # machine and CI generate identical code without BSR access.
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: gen/go
+    opt: paths=source_relative
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: gen/go
+    opt: paths=source_relative
+  # MCP tool input and output schemas, with field descriptions and
+  # field_behavior, and <Service>MCPTools() for mcpserver.AddTools.
+  - local: ["go", "tool", "protoc-gen-dedo-mcp"]
+    out: gen/go
+    opt: paths=source_relative
+  # IAM's config from the contract (commerce-auth): route keys, scopes,
+  # permissions. The local dev authorizer reads its urlScopeMap.
+  - local: ["go", "tool", "protoc-gen-commerce-iam"]
+    out: gen/iam
+    strategy: all
+    opt: out=iam-config.json
+  # The local REST reference, served at /docs and by dedo docs.
+  - local: ["go", "tool", "protoc-gen-dedo-openapi"]
+    out: docs
+    strategy: all
+    opt:
+      - title=Todo API
+      - server=http://localhost:8080
+      - headers=docs/headers.json
+  # The public reference the public_api_rules gate checks (commerce's
+  # annexure: The public spec is in docs/public).
+  - local: ["go", "tool", "protoc-gen-dedo-openapi"]
+    out: docs/public/todo
+    strategy: all
+    opt:
+      - title=Todo API
+      - filename=todo.json
+      - server=https://services.leadconnectorhq.com
+      - min_audience=EXTERNAL_PUBLIC
+      - headers=docs/headers.json
+inputs:
+  - directory: proto

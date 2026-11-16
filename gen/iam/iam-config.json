@@ -1,0 +1,152 @@
+{
+  "urlScopeMap": {
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/CompleteTask": "todo/tasks.write",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/CreateTask": "todo/tasks.write",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/DeleteTask": "todo/tasks.write",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/GetTask": "todo/tasks.readonly",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/ListTasks": "todo/tasks.readonly",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/ReopenTask": "todo/tasks.write",
+    "POST /commerce/todo/commerce.todo.tasks.v1.TaskService/UpdateTask": "todo/tasks.write",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimeEntryService/CalculateTrackedTime": "todo/time-entries.readonly",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimeEntryService/CreateTimeEntry": "todo/time-entries.write",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimeEntryService/DeleteTimeEntry": "todo/time-entries.write",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimeEntryService/GetTimeEntry": "todo/time-entries.readonly",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimeEntryService/ListTimeEntries": "todo/time-entries.readonly",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimerService/GetTimer": "todo/timers.readonly",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimerService/ListTimers": "todo/timers.readonly",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimerService/StartTimer": "todo/timers.write",
+    "POST /commerce/todo/commerce.todo.time_tracking.v1.TimerService/StopTimer": "todo/timers.write"
+  },
+  "scopes": [
+    "todo/tasks.readonly",
+    "todo/tasks.write",
+    "todo/time-entries.readonly",
+    "todo/time-entries.write",
+    "todo/timers.readonly",
+    "todo/timers.write"
+  ],
+  "scopeConfigs": {
+    "todo/tasks.readonly": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    },
+    "todo/tasks.write": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    },
+    "todo/time-entries.readonly": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    },
+    "todo/time-entries.write": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    },
+    "todo/timers.readonly": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    },
+    "todo/timers.write": {
+      "whoCanAccessAuthClasses": [
+        "Location",
+        "User"
+      ]
+    }
+  },
+  "userRolesScopesMap": {
+    "accountAdmin": [
+      "todo/tasks.manage",
+      "todo/tasks.readonly",
+      "todo/tasks.write",
+      "todo/time-entries.readonly",
+      "todo/time-entries.write",
+      "todo/time.track",
+      "todo/timers.readonly",
+      "todo/timers.write"
+    ],
+    "accountUser": [],
+    "agencyAdmin": [
+      "todo/tasks.manage",
+      "todo/tasks.readonly",
+      "todo/tasks.write",
+      "todo/time-entries.readonly",
+      "todo/time-entries.write",
+      "todo/time.track",
+      "todo/timers.readonly",
+      "todo/timers.write"
+    ],
+    "agencyOwner": [
+      "todo/tasks.manage",
+      "todo/tasks.readonly",
+      "todo/tasks.write",
+      "todo/time-entries.readonly",
+      "todo/time-entries.write",
+      "todo/time.track",
+      "todo/timers.readonly",
+      "todo/timers.write"
+    ],
+    "agencyUser": []
+  },
+  "userRolesAssignedScopesMap": {
+    "accountAdmin": [],
+    "accountUser": [],
+    "agencyAdmin": [],
+    "agencyOwner": [],
+    "agencyUser": []
+  },
+  "scopeUserConfig": {
+    "todo/tasks.manage": {
+      "userConfig": {
+        "label": "scopes.todo_tasks_manage.label",
+        "module": "COMMERCE_TODO",
+        "view": [
+          "account"
+        ],
+        "scopesMap": [
+          "todo/tasks.readonly",
+          "todo/tasks.write"
+        ],
+        "locationPermissionsNameV2": [
+          "commerce-todo"
+        ],
+        "supportsAssignedTo": false
+      }
+    },
+    "todo/time.track": {
+      "userConfig": {
+        "label": "scopes.todo_time_track.label",
+        "module": "COMMERCE_TODO",
+        "view": [
+          "account"
+        ],
+        "scopesMap": [
+          "todo/timers.readonly",
+          "todo/timers.write",
+          "todo/time-entries.readonly",
+          "todo/time-entries.write",
+          "todo/tasks.readonly"
+        ],
+        "locationPermissionsNameV2": [
+          "commerce-todo"
+        ],
+        "supportsAssignedTo": false
+      }
+    }
+  },
+  "localeEn": {
+    "scopes.todo_tasks_manage.label": "Manage tasks",
+    "scopes.todo_time_track.label": "Track time on tasks"
+  },
+  "scopeConditions": {},
+  "warnings": []
+}

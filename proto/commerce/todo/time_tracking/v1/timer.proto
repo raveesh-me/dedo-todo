@@ -1,0 +1,269 @@
+syntax = "proto3";
+
+// Time tracking is the time a person spends on their tasks: the one timer
+// they may have running, and the time entries it and they write.
+package commerce.todo.time_tracking.v1;
+
+import "buf/validate/validate.proto";
+import "commerce/auth/v2/options.proto";
+import "commerce/obs/v1/options.proto";
+import "commerce/todo/time_tracking/v1/time_entries.proto";
+import "dedo/v1/options.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+
+// Starts, reads and stops the caller's one running timer.
+service TimerService {
+  option (dedo.v1.service) = {
+    audience: AUDIENCE_EXTERNAL_PUBLIC
+    owner_team: "commerce-todo"
+    title: "Timers"
+    service_level: {
+      objectives: {
+        availability: 0.99
+        latency: {
+          percentile: 0.99
+          threshold: {seconds: 1}
+        }
+      }
+      window: {seconds: 2419200}
+    }
+  };
+  option (commerce.auth.v2.service) = {tenant: TENANT_LOCATION};
+  option (commerce.obs.v1.service) = {
+    tier: TIER_3
+    alert_route: "commerce-todo-oncall"
+  };
+
+  // Starts a timer on an open task. A person has at most one running timer.
+  rpc StartTimer(StartTimerRequest) returns (StartTimerResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/timers:startTimer"
+      body: "*"
+      response_body: "timer"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/timers.write"
+      errors: {
+        reason: "TIMER_ALREADY_RUNNING"
+        code: FAILED_PRECONDITION
+      }
+      errors: {
+        reason: "TASK_NOT_OPEN"
+        code: FAILED_PRECONDITION
+      }
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASKS_UNAVAILABLE"
+        code: UNAVAILABLE
+      }
+      tool: {
+        title: "Start a timer"
+        description: "Starts timing the caller's work on an open task, named by its resource name (tasks/...), and returns the running timer (timers/...). A person has one running timer at a time: if one is already running this fails with TIMER_ALREADY_RUNNING and that timer keeps going, so stop it first with stop_timer. A done task cannot be timed."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+    option (commerce.auth.v2.method) = {
+      calls: ["commerce.todo.tasks.v1.TaskService.GetTask"]
+    };
+  }
+
+  // Returns a running timer.
+  rpc GetTimer(GetTimerRequest) returns (GetTimerResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {
+      get: "/commerce/todo/v1/{name=timers/*}"
+      response_body: "timer"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/timers.readonly"
+      errors: {
+        reason: "TIMER_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      tool: {
+        title: "Get a timer"
+        description: "Returns one of the caller's running timers by its resource name (timers/...): the task it is timing and when it started. A stopped timer is gone: its time is in a time entry. To find the running timer, use list_timers."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Lists the caller's running timers: at most one.
+  rpc ListTimers(ListTimersRequest) returns (ListTimersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/v1/timers"};
+    option (dedo.v1.method) = {
+      scopes: "todo/timers.readonly"
+      errors: {
+        reason: "INVALID_CURSOR"
+        code: INVALID_ARGUMENT
+      }
+      tool: {
+        title: "List running timers"
+        description: "Lists the caller's running timer, if there is one: the list is empty when no timer is running and never holds more than one. Use it to find what the caller is working on, or the timer's name before stopping it."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Stops a running timer and writes its time entry.
+  rpc StopTimer(StopTimerRequest) returns (StopTimerResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/{name=timers/*}:stop"
+      body: "*"
+      response_body: "time_entry"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/timers.write"
+      errors: {
+        reason: "TIMER_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      tool: {
+        title: "Stop a timer"
+        description: "Stops one of the caller's running timers (timers/...), found with list_timers, and returns the time entry it wrote, from the timer's start until now. Completing or deleting a task already stops a timer running on it."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+  }
+}
+
+// A timer: a running measurement of a person's time on one task. It exists
+// only while it runs; stopping it writes a time entry and removes it.
+message Timer {
+  option (google.api.resource) = {
+    type: "todo.commerce.example.com/Timer"
+    pattern: "timers/{timer}"
+    singular: "timer"
+    plural: "timers"
+  };
+  option (dedo.v1.message) = {description: "A running timer: which task it is timing, and since when."};
+
+  // The timer's resource name, such as timers/01jd7y3m5n6p7q8r9s0t1v2w3x.
+  string name = 1 [
+    (google.api.field_behavior) = IDENTIFIER,
+    (buf.validate.field).string.example = "timers/01jd7y3m5n6p7q8r9s0t1v2w3x"
+  ];
+  // The task being timed, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 2 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // When the timer started.
+  google.protobuf.Timestamp start_time = 3 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).timestamp.example = {seconds: 1764756000}
+  ];
+}
+
+// The request of StartTimer.
+message StartTimerRequest {
+  option (dedo.v1.message) = {description: "Which task to start timing."};
+
+  // The open task to time, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.pattern = "^tasks/[a-z0-9-]+$",
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of StartTimer.
+message StartTimerResponse {
+  option (dedo.v1.message) = {description: "The timer, now running."};
+
+  // The timer, now running.
+  Timer timer = 1;
+}
+
+// The request of GetTimer.
+message GetTimerRequest {
+  option (dedo.v1.message) = {description: "Which timer to get."};
+
+  // The timer's resource name, such as timers/01jd7y3m5n6p7q8r9s0t1v2w3x.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Timer"},
+    (buf.validate.field).string.example = "timers/01jd7y3m5n6p7q8r9s0t1v2w3x"
+  ];
+}
+
+// The response of GetTimer.
+message GetTimerResponse {
+  option (dedo.v1.message) = {description: "The running timer."};
+
+  // The running timer.
+  Timer timer = 1;
+}
+
+// The request of ListTimers.
+message ListTimersRequest {
+  option (dedo.v1.message) = {description: "Which page of running timers to list."};
+
+  // The most timers to return; zero returns up to 50.
+  int32 limit = 1 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.example = 50
+  ];
+  // The next_cursor of the previous page; empty for the first page.
+  string cursor = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).string.example = "MDFKRDdZM001TjZQN1E4UjlTMFQxVjJXM1g"
+  ];
+}
+
+// The response of ListTimers.
+message ListTimersResponse {
+  option (dedo.v1.message) = {description: "The running timers: none or one."};
+
+  // The running timers: empty, or the one that is running.
+  repeated Timer timers = 1;
+  // The cursor of the next page; empty on the last page.
+  string next_cursor = 2 [(buf.validate.field).string.example = ""];
+}
+
+// The request of StopTimer.
+message StopTimerRequest {
+  option (dedo.v1.message) = {description: "Which running timer to stop."};
+
+  // The timer's resource name, such as timers/01jd7y3m5n6p7q8r9s0t1v2w3x.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Timer"},
+    (buf.validate.field).string.example = "timers/01jd7y3m5n6p7q8r9s0t1v2w3x"
+  ];
+}
+
+// The response of StopTimer.
+message StopTimerResponse {
+  option (dedo.v1.message) = {description: "The time entry the stopped timer wrote."};
+
+  // The time entry the timer wrote.
+  TimeEntry time_entry = 1;
+}
