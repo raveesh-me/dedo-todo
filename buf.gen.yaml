@@ -9,6 +9,14 @@ managed:
     # The options module ships its generated Go code in its own Go module.
     # The last matching override wins, so this one must stay below the
     # catch-all above.
+    # commerce-auth's and commerce-obs's options: Go code in gen/options,
+    # from buf.gen.options.yaml.
+    - file_option: go_package_prefix
+      module: buf.build/lc-commerce/commerce-auth
+      value: github.com/raveesh-me/dedo-todo/gen/options
+    - file_option: go_package_prefix
+      module: buf.build/lc-commerce/commerce-obs
+      value: github.com/raveesh-me/dedo-todo/gen/options
     - file_option: go_package_prefix
       module: buf.build/lc-commerce/dedo
       value: github.com/GoHighLevel/dedo/gen/go

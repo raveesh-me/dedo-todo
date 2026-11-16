@@ -263,8 +263,8 @@ const file_commerce_obs_v1_options_proto_rawDesc = "" +
 	"\n" +
 	"\x06TIER_3\x10\x03:Z\n" +
 	"\aservice\x12\x1f.google.protobuf.ServiceOptions\x18\xfc\x88\x03 \x01(\v2\x1d.commerce.obs.v1.ServiceRulesR\aservice:V\n" +
-	"\x06method\x12\x1e.google.protobuf.MethodOptions\x18\xfd\x88\x03 \x01(\v2\x1c.commerce.obs.v1.MethodRulesR\x06methodB\xbf\x01\n" +
-	"\x13com.commerce.obs.v1B\fOptionsProtoP\x01Z<github.com/raveesh-me/dedo-todo/gen/go/commerce/obs/v1;obsv1\xa2\x02\x03COX\xaa\x02\x0fCommerce.Obs.V1\xca\x02\x0fCommerce\\Obs\\V1\xe2\x02\x1bCommerce\\Obs\\V1\\GPBMetadata\xea\x02\x11Commerce::Obs::V1b\x06proto3"
+	"\x06method\x12\x1e.google.protobuf.MethodOptions\x18\xfd\x88\x03 \x01(\v2\x1c.commerce.obs.v1.MethodRulesR\x06methodB\xc4\x01\n" +
+	"\x13com.commerce.obs.v1B\fOptionsProtoP\x01ZAgithub.com/raveesh-me/dedo-todo/gen/options/commerce/obs/v1;obsv1\xa2\x02\x03COX\xaa\x02\x0fCommerce.Obs.V1\xca\x02\x0fCommerce\\Obs\\V1\xe2\x02\x1bCommerce\\Obs\\V1\\GPBMetadata\xea\x02\x11Commerce::Obs::V1b\x06proto3"
 
 var (
 	file_commerce_obs_v1_options_proto_rawDescOnce sync.Once

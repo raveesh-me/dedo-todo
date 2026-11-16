@@ -1,16 +1,18 @@
 # Go code for commerce-auth's and commerce-obs's option files, at the commits
 # buf.lock pins. The service's generated code imports their Go packages, and
-# neither module ships Go code of its own. make generate runs it before
+# neither module ships Go code of its own. It is a Go module of its own,
+# gen/options, which the backend and the BFF both require: it is neither the
+# backend's code nor generated from its protos. make generate runs it before
 # buf.gen.yaml (Makefile: generate-options).
 version: v2
 managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/raveesh-me/dedo-todo/gen/go
+      value: github.com/raveesh-me/dedo-todo/gen/options
 plugins:
   - local: ["go", "tool", "protoc-gen-go"]
-    out: gen/go
+    out: gen/options
     opt: paths=source_relative
 inputs:
   - module: buf.build/lc-commerce/commerce-auth:cfbe20de8fd74ec0ab66be973bfda81b

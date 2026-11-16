@@ -728,8 +728,8 @@ const file_commerce_auth_v2_options_proto_rawDesc = "" +
 	"\x0fON_UNKNOWN_DENY\x10\x02:O\n" +
 	"\x04file\x12\x1c.google.protobuf.FileOptions\x18\x98\x88\x03 \x01(\v2\x1b.commerce.auth.v2.FileRulesR\x04file:[\n" +
 	"\aservice\x12\x1f.google.protobuf.ServiceOptions\x18\x99\x88\x03 \x01(\v2\x1e.commerce.auth.v2.ServiceRulesR\aservice:W\n" +
-	"\x06method\x12\x1e.google.protobuf.MethodOptions\x18\x9a\x88\x03 \x01(\v2\x1d.commerce.auth.v2.MethodRulesR\x06methodB\xc6\x01\n" +
-	"\x14com.commerce.auth.v2B\fOptionsProtoP\x01Z>github.com/raveesh-me/dedo-todo/gen/go/commerce/auth/v2;authv2\xa2\x02\x03CAX\xaa\x02\x10Commerce.Auth.V2\xca\x02\x10Commerce\\Auth\\V2\xe2\x02\x1cCommerce\\Auth\\V2\\GPBMetadata\xea\x02\x12Commerce::Auth::V2b\x06proto3"
+	"\x06method\x12\x1e.google.protobuf.MethodOptions\x18\x9a\x88\x03 \x01(\v2\x1d.commerce.auth.v2.MethodRulesR\x06methodB\xcb\x01\n" +
+	"\x14com.commerce.auth.v2B\fOptionsProtoP\x01ZCgithub.com/raveesh-me/dedo-todo/gen/options/commerce/auth/v2;authv2\xa2\x02\x03CAX\xaa\x02\x10Commerce.Auth.V2\xca\x02\x10Commerce\\Auth\\V2\xe2\x02\x1cCommerce\\Auth\\V2\\GPBMetadata\xea\x02\x12Commerce::Auth::V2b\x06proto3"
 
 var (
 	file_commerce_auth_v2_options_proto_rawDescOnce sync.Once

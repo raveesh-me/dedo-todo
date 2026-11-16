@@ -1,6 +1,13 @@
 version: v2
 modules:
   - path: proto
+  # The backend for frontend's API. It has no name, so buf push
+  # --exclude-unnamed never publishes it, and no breaking check: the
+  # frontend and the BFF build from one commit and change together.
+  - path: bff/proto
+    breaking:
+      ignore:
+        - bff/proto
 deps:
   - buf.build/googleapis/googleapis
   - buf.build/bufbuild/protovalidate
@@ -37,6 +44,6 @@ plugins:
   # It is referred to by path, so editors started outside a shell find it
   # too, and runs natively: buf starts it about a dozen times per lint.
   - plugin: .tools/buf-plugin-dedo-lint
-  # It reads dedo.yaml next to this file: the rule sets that run, the rules
-  # opted out of, and your organisation's HOUSE_* rules. See
-  # guidance/RULES.md in the dedo repository.
+# It reads dedo.yaml next to this file: the rule sets that run, the rules
+# opted out of, and your organisation's HOUSE_* rules. See
+# guidance/RULES.md in the dedo repository.

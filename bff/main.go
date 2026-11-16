@@ -1,0 +1,265 @@
+// Command bff serves the backend for frontend of github.com/raveesh-me/dedo-todo: the
+// API of the one frontend built from the same commit. It owns no data and holds no credentials. It reads the backend
+// through its Connect API as the caller, and the backend checks the
+// caller's token.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	bfftools "github.com/GoHighLevel/dedo/bff-tools"
+	"github.com/GoHighLevel/dedo/flowid"
+	"github.com/GoHighLevel/dedo/telemetry"
+	"github.com/raveesh-me/dedo-todo/bff/gen/go/commerce/todo/web/v1/webv1connect"
+)
+
+// buildSHA is the commit the BFF and its frontend were built from, which
+// pairs them. The build sets it:
+//
+//	go build -ldflags "-X main.buildSHA=$(git rev-parse HEAD | cut -c1-12)"
+var buildSHA string
+
+// prefix is the path the frontend calls the BFF under, followed by
+// buildSHA: /bff/<sha>/.
+const prefix = "/bff"
+
+// serviceName is service.name when OTEL_SERVICE_NAME does not set it.
+const serviceName = "bff"
+
+func main() {
+	// Every record logged with a call's context carries its trace_id and
+	// span_id.
+	log := slog.New(telemetry.NewLogHandler(slog.NewJSONHandler(os.Stderr, nil)))
+	if err := run(log); err != nil {
+		log.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run serves until SIGINT or SIGTERM, then drains requests and flushes
+// telemetry.
+func run(log *slog.Logger) (err error) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	shutdownTelemetry, err := setupTelemetry(ctx, log)
+	if err != nil {
+		return fmt.Errorf("startup failed: %w", err)
+	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err = errors.Join(err, shutdownTelemetry(flushCtx))
+	}()
+	handler, err := newHandler(log, os.Getenv("BACKEND_URL"))
+	if err != nil {
+		return fmt.Errorf("startup failed: %w", err)
+	}
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	log.Info("starting", "version", buildSHA)
+	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	return serve(ctx, log, server)
+}
+
+// serve runs server until ctx is done, then shuts it down gracefully.
+func serve(ctx context.Context, log *slog.Logger, server *http.Server) error {
+	stopped := make(chan error, 1)
+	go func() { stopped <- server.ListenAndServe() }()
+	log.Info("listening", "addr", server.Addr)
+	select {
+	case err := <-stopped:
+		return err
+	case <-ctx.Done():
+	}
+	drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return server.Shutdown(drainCtx)
+}
+
+func newHandler(log *slog.Logger, backendURL string) (http.Handler, error) {
+	if err := bfftools.CheckSHA(buildSHA); err != nil {
+		return nil, err
+	}
+	if backendURL == "" {
+		return nil, errors.New("BACKEND_URL is not set: the backend's address, such as http://localhost:8080")
+	}
+	// The backend's API, called as the caller: Forward hands on its
+	// Authorization and flow ID, and adds no credentials of its own. Each
+	// call is a client span that carries the trace on to the backend.
+	traced, err := telemetry.NewClientInterceptor(telemetry.Config{})
+	if err != nil {
+		return nil, err
+	}
+	// One http.Client for every call, never http.DefaultClient: its two
+	// idle connections per host run out of local ports under load.
+	httpClient := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{MaxIdleConnsPerHost: 64, IdleConnTimeout: 90 * time.Second},
+	}
+	// Version and location-id go with the caller's Authorization: platform
+	// IAM needs both to judge a user's token.
+	backend := connect.NewClient(connecthttp.NewTransport(httpClient, backendURL),
+		bfftools.Forward("Version", "location-id"), traced)
+
+	// A span and an rpc.server.call.duration for every call the frontend
+	// makes, continuing the frontend's trace.
+	observe, err := telemetry.NewServerInterceptor(telemetry.Config{})
+	if err != nil {
+		return nil, err
+	}
+	server := connect.NewServer(flowid.Interceptor(), observe)
+	webv1connect.RegisterBoardServiceHandler(server, newBoardService(backend))
+	api := http.NewServeMux()
+	connecthttp.Mount(api, server)
+
+	// Activity logs one line per request, with this SHA, the procedure and
+	// a caller key: the record the job that retires this version reads.
+	// Set CallerKey to tell callers apart by user and location, from the
+	// verified token's claims or the tenancy headers, rather than by a
+	// hash of the token.
+	activity := bfftools.NewActivity(buildSHA, bfftools.ActivityOptions{Log: log})
+	// Only the frontend built from buildSHA is served. Any other gets
+	// BFF_VERSION_RETIRED and reloads, which loads the current one.
+	mux := http.NewServeMux()
+	mux.Handle(prefix+"/", bfftools.Pin(buildSHA, prefix, activity.Middleware(api)))
+	// Outside prefix, so neither counts as the frontend's activity: this
+	// process's counts since it started, and the health probe.
+	mux.Handle("GET /activity", activity.Handler())
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return mux, nil
+}
+
+// setupTelemetry installs the OpenTelemetry SDK, which exports traces and
+// metrics over OTLP (HTTP/protobuf). Only the standard OTEL_* environment
+// variables configure it:
+//
+//	OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES   who is reporting
+//	OTEL_EXPORTER_OTLP_ENDPOINT (and _HEADERS,    where to send, default
+//	  _TIMEOUT, _COMPRESSION, per signal too)     http://localhost:4318
+//	OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG  which traces to keep
+//	OTEL_TRACES_EXPORTER, OTEL_METRICS_EXPORTER   otlp (default) or none
+//	OTEL_PROPAGATORS                              tracecontext,baggage (default)
+//	OTEL_SDK_DISABLED=true                        no SDK: every span is a no-op
+//
+// It returns the function that flushes and stops the SDK; call it on exit.
+// On an error the service is meant to exit: what was installed stays
+// global. This is the service's own code, not a dependency: change it
+// freely, such as to add an exporter.
+func setupTelemetry(ctx context.Context, log *slog.Logger) (func(context.Context) error, error) {
+	// The propagator is set even without the SDK, so the caller's trace
+	// context still reaches handlers, logs and outbound calls.
+	propagator, err := propagatorFromEnv(os.Getenv("OTEL_PROPAGATORS"))
+	if err != nil {
+		return nil, err
+	}
+	otel.SetTextMapPropagator(propagator)
+	if strings.EqualFold(os.Getenv("OTEL_SDK_DISABLED"), "true") {
+		return func(context.Context) error { return nil }, nil
+	}
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		log.Warn("telemetry export failed", "error", err)
+	}))
+	res, err := resource.New(ctx,
+		resource.WithAttributes(attribute.String("service.name", serviceName)),
+		resource.WithFromEnv(), // OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES win
+		resource.WithTelemetrySDK())
+	if err != nil {
+		return nil, fmt.Errorf("telemetry resource: %w", err)
+	}
+	var shutdowns []func(context.Context) error
+	shutdown := func(ctx context.Context) error {
+		var errs []error
+		for _, stop := range shutdowns {
+			errs = append(errs, stop(ctx))
+		}
+		return errors.Join(errs...)
+	}
+	if on, err := exporterOn("TRACES"); err != nil {
+		return nil, err
+	} else if on {
+		exporter, err := otlptracehttp.New(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("trace exporter: %w", err)
+		}
+		traces := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), sdktrace.WithResource(res))
+		otel.SetTracerProvider(traces)
+		shutdowns = append(shutdowns, traces.Shutdown)
+	}
+	if on, err := exporterOn("METRICS"); err != nil {
+		return nil, errors.Join(err, shutdown(ctx))
+	} else if on {
+		exporter, err := otlpmetrichttp.New(ctx)
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("metric exporter: %w", err), shutdown(ctx))
+		}
+		metrics := sdkmetric.NewMeterProvider(sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)), sdkmetric.WithResource(res))
+		otel.SetMeterProvider(metrics)
+		shutdowns = append(shutdowns, metrics.Shutdown)
+	}
+	return shutdown, nil
+}
+
+// exporterOn reads OTEL_<SIGNAL>_EXPORTER, otlp or none, and checks that
+// the signal's OTLP protocol is http/protobuf, the one exporter built in.
+func exporterOn(signal string) (bool, error) {
+	switch exporter := os.Getenv("OTEL_" + signal + "_EXPORTER"); exporter {
+	case "none":
+		return false, nil
+	case "", "otlp":
+	default:
+		return false, fmt.Errorf("OTEL_%s_EXPORTER=%s: this service exports otlp or none", signal, exporter)
+	}
+	protocol := os.Getenv("OTEL_EXPORTER_OTLP_" + signal + "_PROTOCOL")
+	if protocol == "" {
+		protocol = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+	}
+	if protocol != "" && protocol != "http/protobuf" {
+		return false, fmt.Errorf("OTLP protocol %s: this service exports http/protobuf; add the exporter for %s to main.go", protocol, protocol)
+	}
+	return true, nil
+}
+
+// propagatorFromEnv reads OTEL_PROPAGATORS: W3C Trace Context and Baggage
+// by default.
+func propagatorFromEnv(value string) (propagation.TextMapPropagator, error) {
+	if value == "" {
+		value = "tracecontext,baggage"
+	}
+	var propagators []propagation.TextMapPropagator
+	for name := range strings.SplitSeq(value, ",") {
+		switch strings.TrimSpace(name) {
+		case "tracecontext":
+			propagators = append(propagators, propagation.TraceContext{})
+		case "baggage":
+			propagators = append(propagators, propagation.Baggage{})
+		case "none":
+		default:
+			return nil, fmt.Errorf("OTEL_PROPAGATORS: %q is not tracecontext, baggage or none", name)
+		}
+	}
+	return propagation.NewCompositeTextMapPropagator(propagators...), nil
+}

@@ -12,8 +12,8 @@ package time_trackingv1
 import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	_ "github.com/GoHighLevel/dedo/gen/go/dedo/v1"
-	_ "github.com/raveesh-me/dedo-todo/gen/go/commerce/auth/v2"
-	_ "github.com/raveesh-me/dedo-todo/gen/go/commerce/obs/v1"
+	_ "github.com/raveesh-me/dedo-todo/gen/options/commerce/auth/v2"
+	_ "github.com/raveesh-me/dedo-todo/gen/options/commerce/obs/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

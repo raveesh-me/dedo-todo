@@ -4,6 +4,8 @@
 package apierr
 
 import (
+	"errors"
+
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connectproto"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -27,7 +29,7 @@ func New(code connect.Code, reason, message string) error {
 // Reason returns the ErrorInfo reason an error carries, or "".
 func Reason(err error) string {
 	var cerr *connect.Error
-	if !asConnect(err, &cerr) {
+	if !errors.As(err, &cerr) {
 		return ""
 	}
 	for _, d := range cerr.Details() {
@@ -37,19 +39,4 @@ func Reason(err error) string {
 		}
 	}
 	return ""
-}
-
-func asConnect(err error, target **connect.Error) bool {
-	for err != nil {
-		if c, ok := err.(*connect.Error); ok {
-			*target = c
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
 }
