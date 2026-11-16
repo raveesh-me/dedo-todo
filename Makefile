@@ -27,7 +27,7 @@ KIND_BFF_IMAGE      ?= localhost/dedo-todo-bff
 KIND_FRONTEND_IMAGE ?= localhost/dedo-todo-frontend
 KIND_FRONTEND_PORT  := $(shell awk '/^[[:space:]]*-/ { c = ""; h = "" } /containerPort:/ { c = $$NF } /hostPort:/ { h = $$NF } c == 30081 && h != "" { print h; exit }' zarf/k8s/dev/kind-config.yaml 2>/dev/null)
 
-.PHONY: kind-all kind-all-update kind-bff-build kind-frontend-build kind-all-load kind-all-apply
+.PHONY: kind-vendor kind-all kind-all-update kind-bff-build kind-frontend-build kind-all-load kind-all-apply
 
 ## kind-all: create the kind cluster if needed, then build, load and deploy the service, its BFF and its frontend
 kind-all: kind-cluster
@@ -38,8 +38,15 @@ kind-all: kind-cluster
 	@echo "MCP   http://localhost:$(KIND_PORT)/mcp  (headers: Authorization: Bearer alice, location-id: loc-demo)"
 
 ## kind-all-update: rebuild all three images at one tag, load them and roll the deployments
-kind-all-update:
+kind-all-update: kind-vendor
 	$(MAKE) -j1 kind-build kind-bff-build kind-frontend-build kind-all-load kind-all-apply KIND_TAG=$(KIND_TAG)
+
+# The images build offline from modules vendored here, on the host, which
+# can reach the private ones (GOPRIVATE). .build/ is not committed.
+kind-vendor:
+	rm -rf $(KIND_BUILD)/vendor && mkdir -p $(KIND_BUILD)/vendor
+	go mod vendor -o $(KIND_BUILD)/vendor/service
+	cd bff && go mod vendor -o ../$(KIND_BUILD)/vendor/bff
 
 kind-bff-build: $(KIND_NO_AUTH)
 	$(CONTAINER) build $(KIND_AUTH_FLAG) -f zarf/docker/dockerfile.bff \

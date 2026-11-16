@@ -9,19 +9,17 @@
 # ---------- build ----------
 FROM docker.io/library/golang:1.26.4-alpine AS build
 WORKDIR /src
-ENV CGO_ENABLED=0 GOMODCACHE=/go/pkg/mod GOCACHE=/root/.cache/go-build
+ENV CGO_ENABLED=0 GOFLAGS=-mod=vendor GOCACHE=/root/.cache/go-build
 
-COPY go.mod go.sum ./
-COPY gen/options/go.mod gen/options/go.sum ./gen/options/
-COPY bff/go.mod bff/go.sum ./bff/
-RUN --mount=type=cache,target=/go/pkg/mod \
-    cd bff && go mod download
-
+# Some modules are private (GoHighLevel/commerce-auth): the build has no
+# credentials, so make vendors every module on the host into .build/vendor
+# (make kind-vendor) and the image builds from it, offline.
 COPY . .
 ARG BUILD_SHA
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    cd bff && go build -trimpath -ldflags="-s -w -X main.buildSHA=${BUILD_SHA}" -o /out/bff .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    test -d .build/vendor/bff || { echo "run make kind-vendor first"; exit 1; } && \
+    cp -r .build/vendor/bff bff/vendor && \
+    cd bff && go build -mod=vendor -trimpath -ldflags="-s -w -X main.buildSHA=${BUILD_SHA}" -o /out/bff .
 
 # ---------- runtime ----------
 FROM gcr.io/distroless/static-debian13:nonroot
