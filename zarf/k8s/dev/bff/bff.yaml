@@ -1,0 +1,90 @@
+# The backend for frontend in kind: it serves only the frontend built from
+# the same commit (its image's BUILD_SHA), under /bff/<sha>/, and reads the
+# Todo API as the caller. It owns no data and holds no credentials.
+#
+# In production each release deploys a BFF named after its SHA beside the
+# previous one, for the retention window domains.md describes; in kind one
+# BFF, rolled with each build, is enough.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff
+  namespace: dedo-todo
+  labels:
+    app: bff
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bff
+  template:
+    metadata:
+      labels:
+        app: bff
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: bff
+        image: localhost/dedo-todo-bff:dev
+        imagePullPolicy: Never
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: ADDR
+          value: ":8080"
+        - name: BACKEND_URL
+          value: http://dedo-todo:8080
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector:4318
+        - name: OTEL_SERVICE_NAME
+          value: dedo-todo-bff
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: deployment.environment.name=dev
+        - name: GOMEMLIMIT
+          value: "58MiB"
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 500m
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff
+  namespace: dedo-todo
+spec:
+  selector:
+    app: bff
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http

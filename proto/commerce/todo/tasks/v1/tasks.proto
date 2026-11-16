@@ -1,0 +1,533 @@
+syntax = "proto3";
+
+// Tasks are what a person intends to do, each with an optional deadline by
+// which it should be done. A task is open until it is completed; an open
+// task whose deadline has passed is overdue.
+package commerce.todo.tasks.v1;
+
+import "buf/validate/validate.proto";
+import "commerce/auth/v2/options.proto";
+import "commerce/obs/v1/options.proto";
+import "dedo/v1/options.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/field_info.proto";
+import "google/api/resource.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+option (commerce.auth.v2.file) = {
+  permissions: {
+    id: "todo/tasks.manage"
+    label: "Manage tasks"
+    module: "COMMERCE_TODO"
+    features: ["commerce-todo"]
+    grants: [
+      "todo/tasks.readonly",
+      "todo/tasks.write"
+    ]
+    seed_roles: [
+      ROLE_AGENCY_OWNER,
+      ROLE_AGENCY_ADMIN,
+      ROLE_ACCOUNT_ADMIN
+    ]
+  }
+};
+
+// Captures, reads, completes and reopens the caller's tasks, and says which
+// of them are overdue.
+service TaskService {
+  option (dedo.v1.service) = {
+    audience: AUDIENCE_EXTERNAL_PUBLIC
+    owner_team: "commerce-todo"
+    title: "Tasks"
+    service_level: {
+      objectives: {
+        availability: 0.99
+        latency: {
+          percentile: 0.99
+          threshold: {seconds: 1}
+        }
+      }
+      window: {seconds: 2419200}
+    }
+  };
+  option (commerce.auth.v2.service) = {tenant: TENANT_LOCATION};
+  option (commerce.obs.v1.service) = {
+    tier: TIER_3
+    alert_route: "commerce-todo-oncall"
+  };
+
+  // Creates an open task, optionally with a deadline.
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/tasks"
+      body: "task"
+      response_body: "task"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.write"
+      errors: {
+        reason: "DEADLINE_IN_PAST"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "TITLE_REQUIRED"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "TASK_ALREADY_EXISTS"
+        code: ALREADY_EXISTS
+      }
+      tool: {
+        title: "Create a task"
+        description: "Creates a new open task for the caller with a title, optional notes and an optional deadline, and returns it with its resource name (tasks/...). A deadline must not be in the past. Use this when the person mentions something they intend to do."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Returns one task, with whether it is overdue.
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {
+      get: "/commerce/todo/v1/{name=tasks/*}"
+      response_body: "task"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.readonly"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      tool: {
+        title: "Get a task"
+        description: "Returns one of the caller's tasks by its resource name, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w: its title, notes, state (STATE_OPEN or STATE_DONE), deadline and whether it is overdue."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Lists the caller's tasks, newest first: all of them, the open or done
+  // ones, or only the overdue ones.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/v1/tasks"};
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.readonly"
+      errors: {
+        reason: "INVALID_CURSOR"
+        code: INVALID_ARGUMENT
+      }
+      tool: {
+        title: "List tasks"
+        description: "Lists the caller's tasks, newest first. Set show to SHOW_OPEN or SHOW_DONE to see only those, or to SHOW_OVERDUE to see only open tasks whose deadline has passed. Use this to find a task's resource name from its title before acting on it. Pages with limit and cursor: pass next_cursor back as cursor until it is empty."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Changes a task's title, notes or deadline.
+  rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse) {
+    option idempotency_level = IDEMPOTENT;
+    option (google.api.http) = {
+      patch: "/commerce/todo/v1/{task.name=tasks/*}"
+      body: "task"
+      response_body: "task"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.write"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASK_DONE_IMMUTABLE"
+        code: FAILED_PRECONDITION
+      }
+      errors: {
+        reason: "DEADLINE_IN_PAST"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "TITLE_REQUIRED"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "INVALID_UPDATE_MASK"
+        code: INVALID_ARGUMENT
+      }
+      tool: {
+        title: "Update a task"
+        description: "Changes a task's title, notes or deadline; update_mask names the fields to change (title, notes, deadline_time), and a deadline_time named in update_mask but left empty clears the deadline. A deadline can only be set, moved or cleared while the task is open, and never to a time in the past."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Deletes a task. A timer running on it stops, and the time it tracked is
+  // kept.
+  rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse) {
+    option idempotency_level = IDEMPOTENT;
+    option (google.api.http) = {delete: "/commerce/todo/v1/{name=tasks/*}"};
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.write"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "EVENT_NOT_PUBLISHED"
+        code: UNAVAILABLE
+      }
+      emits: "commerce.todo.tasks.task.deleted"
+      tool: {
+        title: "Delete a task"
+        description: "Permanently deletes one of the caller's tasks; it cannot be recovered. A timer running on the task stops and its time entry is kept. Prefer complete_task when the work is finished."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: true
+          idempotent_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Completes an open task. A timer running on it stops.
+  rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/{name=tasks/*}:complete"
+      body: "*"
+      response_body: "task"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.write"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASK_ALREADY_DONE"
+        code: FAILED_PRECONDITION
+      }
+      errors: {
+        reason: "EVENT_NOT_PUBLISHED"
+        code: UNAVAILABLE
+      }
+      emits: "commerce.todo.tasks.task.completed"
+      tool: {
+        title: "Complete a task"
+        description: "Marks an open task as done. If a timer is running on the task, it stops and its time entry is written, so there is no need to stop it first. A task that is already done cannot be completed again."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Reopens a done task.
+  rpc ReopenTask(ReopenTaskRequest) returns (ReopenTaskResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/{name=tasks/*}:reopen"
+      body: "*"
+      response_body: "task"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.write"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASK_NOT_DONE"
+        code: FAILED_PRECONDITION
+      }
+      tool: {
+        title: "Reopen a task"
+        description: "Moves a done task back to open, keeping its deadline. Only a done task can be reopened."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+  }
+}
+
+// A task: something a person intends to do.
+message Task {
+  option (google.api.resource) = {
+    type: "todo.commerce.example.com/Task"
+    pattern: "tasks/{task}"
+    singular: "task"
+    plural: "tasks"
+  };
+  option (dedo.v1.message) = {description: "Something a person intends to do, with an optional deadline."};
+
+  // State is whether a task is still to be done.
+  enum State {
+    // Not a valid state.
+    STATE_UNSPECIFIED = 0;
+    // Still to be done. Every new task is open.
+    STATE_OPEN = 1;
+    // Done. Completing a task makes it done; reopening makes it open again.
+    STATE_DONE = 2;
+  }
+
+  // The task's resource name, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string name = 1 [
+    (google.api.field_behavior) = IDENTIFIER,
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // What is to be done, in a few words: 1 to 200 characters.
+  string title = 2 [
+    (google.api.field_behavior) = REQUIRED,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_len = 200,
+    (buf.validate.field).string.example = "Write the quarterly report"
+  ];
+  // Anything else worth remembering about the task.
+  string notes = 3 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.max_len = 5000,
+    (buf.validate.field).string.example = "Use the numbers from the October close."
+  ];
+  // Whether the task is open or done.
+  State state = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // When the task should be done by. Optional: a task without a deadline is
+  // never overdue. Must not be in the past when it is set.
+  google.protobuf.Timestamp deadline_time = 5 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).timestamp.example = {seconds: 1767225600}
+  ];
+  // Whether the task is open and its deadline has passed, as of the read.
+  bool overdue = 6 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).bool.example = false
+  ];
+  // When the task was created.
+  google.protobuf.Timestamp create_time = 7 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).timestamp.example = {seconds: 1764547200}
+  ];
+  // When the task last changed.
+  google.protobuf.Timestamp update_time = 8 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).timestamp.example = {seconds: 1764633600}
+  ];
+  // When the task was last completed; empty while it is open.
+  google.protobuf.Timestamp complete_time = 9 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).timestamp.example = {seconds: 1764720000}
+  ];
+}
+
+// The request of CreateTask.
+message CreateTaskRequest {
+  option (dedo.v1.message) = {description: "The task to create."};
+
+  // The task to create. Its title is required; its state is always open.
+  Task task = 1 [(google.api.field_behavior) = REQUIRED];
+  // The ID to give the task, the last part of its resource name: 4 to 63
+  // lowercase letters, digits and hyphens, starting with a letter. The
+  // server picks one when it is empty.
+  string task_id = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.pattern = "^([a-z][a-z0-9-]{2,61}[a-z0-9])?$",
+    (buf.validate.field).string.example = "quarterly-report"
+  ];
+}
+
+// The response of CreateTask.
+message CreateTaskResponse {
+  option (dedo.v1.message) = {description: "The created task."};
+
+  // The created task.
+  Task task = 1;
+}
+
+// The request of GetTask.
+message GetTaskRequest {
+  option (dedo.v1.message) = {description: "Which task to get."};
+
+  // The resource name of the task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of GetTask.
+message GetTaskResponse {
+  option (dedo.v1.message) = {description: "The requested task."};
+
+  // The task.
+  Task task = 1;
+}
+
+// The request of ListTasks.
+message ListTasksRequest {
+  option (dedo.v1.message) = {description: "Which tasks to list, and which page."};
+
+  // The most tasks to return; zero returns up to 50, and more than 200 is
+  // read as 200.
+  int32 limit = 1 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.example = 50
+  ];
+  // The next_cursor of the previous page; empty for the first page.
+  string cursor = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).string.example = "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"
+  ];
+  // Which tasks to list; unset lists every task, open or done.
+  Show show = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Show is which of the caller's tasks to list.
+  enum Show {
+    // Every task, open or done.
+    SHOW_UNSPECIFIED = 0;
+    // Only open tasks.
+    SHOW_OPEN = 1;
+    // Only done tasks.
+    SHOW_DONE = 2;
+    // Only overdue tasks: open, with a deadline that has passed.
+    SHOW_OVERDUE = 3;
+  }
+}
+
+// The response of ListTasks.
+message ListTasksResponse {
+  option (dedo.v1.message) = {description: "One page of tasks."};
+
+  // The tasks, newest first.
+  repeated Task tasks = 1;
+  // The cursor of the next page; empty on the last page.
+  string next_cursor = 2 [(buf.validate.field).string.example = "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"];
+}
+
+// The request of UpdateTask.
+message UpdateTaskRequest {
+  option (dedo.v1.message) = {description: "The task's new values, and which of them to change."};
+
+  // The task, with its resource name and the new values of the fields
+  // update_mask names.
+  Task task = 1 [(google.api.field_behavior) = REQUIRED];
+  // The fields to change: title, notes or deadline_time. A deadline_time
+  // named here but left empty clears the deadline. Empty changes every
+  // field the task sets.
+  google.protobuf.FieldMask update_mask = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).field_mask.example = {
+      paths: ["deadline_time"]
+    }
+  ];
+}
+
+// The response of UpdateTask.
+message UpdateTaskResponse {
+  option (dedo.v1.message) = {description: "The updated task."};
+
+  // The updated task.
+  Task task = 1;
+}
+
+// The request of DeleteTask.
+message DeleteTaskRequest {
+  option (dedo.v1.message) = {description: "Which task to delete."};
+
+  // The resource name of the task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // A unique ID for this request, such as a UUID. Repeating a delete with
+  // the same request_id after a failure succeeds and announces the deletion
+  // again, rather than answering not found.
+  string request_id = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (google.api.field_info).format = UUID4,
+    (buf.validate.field).string.max_len = 64,
+    (buf.validate.field).string.example = "4f8b2c1e-9d3a-4e5f-8a7b-6c5d4e3f2a1b"
+  ];
+}
+
+// The response of DeleteTask.
+message DeleteTaskResponse {
+  option (dedo.v1.message) = {description: "Nothing: the task is deleted."};
+}
+
+// The request of CompleteTask.
+message CompleteTaskRequest {
+  option (dedo.v1.message) = {description: "Which task to complete."};
+
+  // The resource name of the task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // A unique ID for this request, such as a UUID. Repeating a completion
+  // with the same request_id after a failure succeeds and announces it
+  // again, rather than answering that the task is already done.
+  string request_id = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (google.api.field_info).format = UUID4,
+    (buf.validate.field).string.max_len = 64,
+    (buf.validate.field).string.example = "4f8b2c1e-9d3a-4e5f-8a7b-6c5d4e3f2a1b"
+  ];
+}
+
+// The response of CompleteTask.
+message CompleteTaskResponse {
+  option (dedo.v1.message) = {description: "The completed task."};
+
+  // The task, now done.
+  Task task = 1;
+}
+
+// The request of ReopenTask.
+message ReopenTaskRequest {
+  option (dedo.v1.message) = {description: "Which task to reopen."};
+
+  // The resource name of the task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of ReopenTask.
+message ReopenTaskResponse {
+  option (dedo.v1.message) = {description: "The reopened task."};
+
+  // The task, open again.
+  Task task = 1;
+}

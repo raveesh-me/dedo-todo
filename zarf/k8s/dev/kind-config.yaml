@@ -1,0 +1,22 @@
+# Local cluster for dedo-todo: make kind-up
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Connect, gRPC, REST, /docs and /mcp: the dev overlay's NodePort 30080.
+  # dedo init picked hostPort from the service's name, so it runs beside
+  # make run (8080) and, mostly, other services' clusters; change it here if
+  # it clashes. Makefile.kind and dedo local-mcp-claude read it from here.
+  - containerPort: 30080
+    hostPort: 8542
+    listenAddress: "127.0.0.1"
+  # The frontend, served beside its BFF: the dev overlay's NodePort 30081.
+  - containerPort: 30081
+    hostPort: 8543
+    listenAddress: "127.0.0.1"
+  # Postgres, for the integration tests on the host (TEST_DATABASE_URL):
+  # the dev overlay's NodePort 30432. Dev only: never expose a database.
+  - containerPort: 30432
+    hostPort: 15432
+    listenAddress: "127.0.0.1"

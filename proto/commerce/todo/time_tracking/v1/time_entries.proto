@@ -1,0 +1,387 @@
+syntax = "proto3";
+
+// Time tracking is the time a person spends on their tasks: the one timer
+// they may have running, and the time entries it and they write.
+package commerce.todo.time_tracking.v1;
+
+import "buf/validate/validate.proto";
+import "commerce/auth/v2/options.proto";
+import "commerce/obs/v1/options.proto";
+import "dedo/v1/options.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option (commerce.auth.v2.file) = {
+  permissions: {
+    id: "todo/time.track"
+    label: "Track time on tasks"
+    module: "COMMERCE_TODO"
+    features: ["commerce-todo"]
+    grants: [
+      "todo/timers.readonly",
+      "todo/timers.write",
+      "todo/time-entries.readonly",
+      "todo/time-entries.write",
+      "todo/tasks.readonly"
+    ]
+    seed_roles: [
+      ROLE_AGENCY_OWNER,
+      ROLE_AGENCY_ADMIN,
+      ROLE_ACCOUNT_ADMIN
+    ]
+  }
+};
+
+// Records, lists and deletes the caller's time entries, and calculates the
+// time tracked on a task.
+service TimeEntryService {
+  option (dedo.v1.service) = {
+    audience: AUDIENCE_EXTERNAL_PUBLIC
+    owner_team: "commerce-todo"
+    title: "Time entries"
+    service_level: {
+      objectives: {
+        availability: 0.99
+        latency: {
+          percentile: 0.99
+          threshold: {seconds: 1}
+        }
+      }
+      window: {seconds: 2419200}
+    }
+  };
+  option (commerce.auth.v2.service) = {tenant: TENANT_LOCATION};
+  option (commerce.obs.v1.service) = {
+    tier: TIER_3
+    alert_route: "commerce-todo-oncall"
+  };
+
+  // Records time spent on a task by hand, from a start to an end.
+  rpc CreateTimeEntry(CreateTimeEntryRequest) returns (CreateTimeEntryResponse) {
+    option (google.api.http) = {
+      post: "/commerce/todo/v1/time-entries"
+      body: "time_entry"
+      response_body: "time_entry"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/time-entries.write"
+      errors: {
+        reason: "INVALID_INTERVAL"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "TIME_ENTRY_ALREADY_EXISTS"
+        code: ALREADY_EXISTS
+      }
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASKS_UNAVAILABLE"
+        code: UNAVAILABLE
+      }
+      tool: {
+        title: "Record time by hand"
+        description: "Records time the caller spent on a task (tasks/...) without a timer, from start_time to end_time; end_time must be after start_time. Time entries are never edited: to correct one, delete it and record a new one."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: false
+          idempotent_hint: false
+          open_world_hint: false
+        }
+      }
+    };
+    option (commerce.auth.v2.method) = {
+      calls: ["commerce.todo.tasks.v1.TaskService.GetTask"]
+    };
+  }
+
+  // Returns one time entry.
+  rpc GetTimeEntry(GetTimeEntryRequest) returns (GetTimeEntryResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {
+      get: "/commerce/todo/v1/{name=time-entries/*}"
+      response_body: "time_entry"
+    };
+    option (dedo.v1.method) = {
+      scopes: "todo/time-entries.readonly"
+      errors: {
+        reason: "TIME_ENTRY_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      tool: {
+        title: "Get a time entry"
+        description: "Returns one of the caller's time entries by its resource name (time-entries/...): the task, its start, end and duration."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Lists the caller's time entries, latest first, optionally only those of
+  // one task.
+  rpc ListTimeEntries(ListTimeEntriesRequest) returns (ListTimeEntriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/v1/time-entries"};
+    option (dedo.v1.method) = {
+      scopes: "todo/time-entries.readonly"
+      errors: {
+        reason: "INVALID_CURSOR"
+        code: INVALID_ARGUMENT
+      }
+      tool: {
+        title: "List time entries"
+        description: "Lists the caller's time entries, latest start first. Set task (tasks/...) to see only that task's entries. Pages with limit and cursor: pass next_cursor back as cursor until it is empty."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Deletes a time entry.
+  rpc DeleteTimeEntry(DeleteTimeEntryRequest) returns (DeleteTimeEntryResponse) {
+    option idempotency_level = IDEMPOTENT;
+    option (google.api.http) = {delete: "/commerce/todo/v1/{name=time-entries/*}"};
+    option (dedo.v1.method) = {
+      scopes: "todo/time-entries.write"
+      errors: {
+        reason: "TIME_ENTRY_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      tool: {
+        title: "Delete a time entry"
+        description: "Permanently deletes one of the caller's time entries; it cannot be recovered, and the task's tracked time drops by its duration. Use it with create_time_entry to correct an entry."
+        annotations: {
+          read_only_hint: false
+          destructive_hint: true
+          idempotent_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Calculates the time tracked on a task: the sum of its time entries.
+  rpc CalculateTrackedTime(CalculateTrackedTimeRequest) returns (CalculateTrackedTimeResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/v1/time-entries:calculateTrackedTime"};
+    option (dedo.v1.method) = {
+      scopes: "todo/time-entries.readonly"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "TASKS_UNAVAILABLE"
+        code: UNAVAILABLE
+      }
+      tool: {
+        title: "Calculate a task's tracked time"
+        description: "Returns the total time the caller has tracked on a task (tasks/...) and how many time entries make it up. A running timer is not included until it stops. A task with no entries has zero."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+    option (commerce.auth.v2.method) = {
+      calls: ["commerce.todo.tasks.v1.TaskService.GetTask"]
+    };
+  }
+}
+
+// A time entry: a finished record of time spent on a task.
+message TimeEntry {
+  option (google.api.resource) = {
+    type: "todo.commerce.example.com/TimeEntry"
+    pattern: "time-entries/{timeEntry}"
+    singular: "timeEntry"
+    plural: "timeEntries"
+  };
+  option (dedo.v1.message) = {description: "A finished, unchangeable record of time spent on a task, from a start to an end."};
+
+  // Origin is how a time entry was recorded.
+  enum Origin {
+    // Not a valid origin.
+    ORIGIN_UNSPECIFIED = 0;
+    // A timer wrote it when it stopped.
+    ORIGIN_TIMER = 1;
+    // A person recorded it by hand.
+    ORIGIN_MANUAL = 2;
+  }
+
+  // The time entry's resource name, such as
+  // time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a.
+  string name = 1 [
+    (google.api.field_behavior) = IDENTIFIER,
+    (buf.validate.field).string.example = "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a"
+  ];
+  // The task the time was spent on, such as
+  // tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 2 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.pattern = "^tasks/[a-z0-9-]+$",
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // When the work started.
+  google.protobuf.Timestamp start_time = 3 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE,
+    (buf.validate.field).timestamp.example = {seconds: 1764756000}
+  ];
+  // When the work ended; after start_time.
+  google.protobuf.Timestamp end_time = 4 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.field_behavior) = IMMUTABLE,
+    (buf.validate.field).timestamp.example = {seconds: 1764759600}
+  ];
+  // How long the work took: end_time minus start_time.
+  google.protobuf.Duration duration = 5 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).duration.example = {seconds: 3600}
+  ];
+  // Whether a timer wrote the entry or a person recorded it by hand.
+  Origin origin = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // When the entry was recorded.
+  google.protobuf.Timestamp create_time = 7 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (buf.validate.field).timestamp.example = {seconds: 1764759601}
+  ];
+}
+
+// The request of CreateTimeEntry.
+message CreateTimeEntryRequest {
+  option (dedo.v1.message) = {description: "The time entry to record."};
+
+  // The time entry to record: its task, start and end.
+  TimeEntry time_entry = 1 [(google.api.field_behavior) = REQUIRED];
+  // The ID to give the time entry, the last part of its resource name: 4
+  // to 63 lowercase letters, digits and hyphens, starting with a letter.
+  // The server picks one when it is empty.
+  string time_entry_id = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.pattern = "^([a-z][a-z0-9-]{2,61}[a-z0-9])?$",
+    (buf.validate.field).string.example = "report-monday-morning"
+  ];
+}
+
+// The response of CreateTimeEntry.
+message CreateTimeEntryResponse {
+  option (dedo.v1.message) = {description: "The recorded time entry."};
+
+  // The recorded time entry.
+  TimeEntry time_entry = 1;
+}
+
+// The request of GetTimeEntry.
+message GetTimeEntryRequest {
+  option (dedo.v1.message) = {description: "Which time entry to get."};
+
+  // The resource name of the time entry, such as
+  // time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/TimeEntry"},
+    (buf.validate.field).string.example = "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a"
+  ];
+}
+
+// The response of GetTimeEntry.
+message GetTimeEntryResponse {
+  option (dedo.v1.message) = {description: "The requested time entry."};
+
+  // The time entry.
+  TimeEntry time_entry = 1;
+}
+
+// The request of ListTimeEntries.
+message ListTimeEntriesRequest {
+  option (dedo.v1.message) = {description: "Which time entries to list, and which page."};
+
+  // The most entries to return; zero returns up to 50, and more than 200 is
+  // read as 200.
+  int32 limit = 1 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.example = 50
+  ];
+  // The next_cursor of the previous page; empty for the first page.
+  string cursor = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).string.example = "MDFKRDdaNFE4UjJTM1Q0VjVXNlg3WThaOUE"
+  ];
+  // Only the entries of this task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 3 [
+    (google.api.field_behavior) = OPTIONAL,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.pattern = "^(tasks/[a-z0-9-]+)?$",
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of ListTimeEntries.
+message ListTimeEntriesResponse {
+  option (dedo.v1.message) = {description: "One page of time entries."};
+
+  // The time entries, latest start first.
+  repeated TimeEntry time_entries = 1;
+  // The cursor of the next page; empty on the last page.
+  string next_cursor = 2 [(buf.validate.field).string.example = "MDFKRDdaNFE4UjJTM1Q0VjVXNlg3WThaOUE"];
+}
+
+// The request of DeleteTimeEntry.
+message DeleteTimeEntryRequest {
+  option (dedo.v1.message) = {description: "Which time entry to delete."};
+
+  // The resource name of the time entry, such as
+  // time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/TimeEntry"},
+    (buf.validate.field).string.example = "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a"
+  ];
+}
+
+// The response of DeleteTimeEntry.
+message DeleteTimeEntryResponse {
+  option (dedo.v1.message) = {description: "Nothing: the time entry is deleted."};
+}
+
+// The request of CalculateTrackedTime.
+message CalculateTrackedTimeRequest {
+  option (dedo.v1.message) = {description: "Which task's tracked time to calculate."};
+
+  // The task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.pattern = "^tasks/[a-z0-9-]+$",
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of CalculateTrackedTime.
+message CalculateTrackedTimeResponse {
+  option (dedo.v1.message) = {description: "The time tracked on the task, and how many time entries make it up."};
+
+  // The task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 1 [
+    (google.api.resource_reference) = {type: "todo.commerce.example.com/Task"},
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+  // The sum of the durations of the task's time entries.
+  google.protobuf.Duration total_duration = 2 [(buf.validate.field).duration.example = {seconds: 9000}];
+  // How many time entries the task has.
+  int32 entry_count = 3 [(buf.validate.field).int32.example = 3];
+}

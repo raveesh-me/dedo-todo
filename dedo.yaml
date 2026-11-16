@@ -1,0 +1,83 @@
+# dedo's settings for this repository, next to buf.yaml. dedo init writes
+# it; guidance/RULES.md in the dedo repository explains each key, and
+# dedo.example.yaml (dedo templates dedo.example.yaml) uses them all.
+
+# Your organisation's shared rules, which bring lint and breaking rules.
+# House rules: HOUSE_* lint, breaking and Go rules for HighLevel's public API
+# quality gate. Rule docs: https://gohighlevel.github.io/commerce-dedo-rules/v0.17.0/RULES.html
+imports:
+  - url: https://gohighlevel.github.io/commerce-dedo-rules/v0.17.0/rules.yml
+    sha256: 5eed16ab5f98733771d669b87a1a91c229adc4820674643ef5373830ce134519
+
+# Which lint rules run. buf.yaml's lint.use lists only DEDO of
+# buf-plugin-dedo-lint's rules; this section chooses among them. Run dedo
+# tools (make tools) after every change: it checks the rules and lists the
+# ones in force.
+#
+# use names the rule sets this repository runs: AIP_NOLANG, ZALANDO, DEDO,
+# HOUSE (the house rules below and the ones imported), and
+# DEDO_MULTI_TENANT for services that declare tenancy. Rule IDs work too.
+# The imports and rules build on these, and override them where they say so.
+lint:
+  use:
+    - AIP_NOLANG
+    - ZALANDO
+    - DEDO
+    - HOUSE
+  # Never DEDO_MULTI_TENANT: the location comes from the token, and
+  # HOUSE_HTTP_PATH_NO_LOCATION forbids it in the path.
+  # Rules this repository opts out of, by ID; never a final rule.
+  # disable: [DEDO_NO_JSON_NAME]
+  #
+  # This repository's own HOUSE_* rules.
+  # rules:
+  #   - id: HOUSE_RESOURCE_TYPE_DOMAIN
+  #     on: resource
+  #     check: type.endsWith('.acme.com')
+  #     message: Resource types live under acme.com.
+
+# Which breaking rules run. buf.yaml's breaking.use lists DEDO_BREAKING
+# beside FILE; this section chooses among them, as lint does: DEDO, dedo's
+# own, and HOUSE, the house breaking rules. A breaking rule's check reads
+# the element it compares with as against. Without use, both run.
+# breaking:
+#   use: [DEDO, HOUSE]
+#   disable: [DEDO_SUNSET_NO_EARLIER]
+#   rules:
+#     - id: HOUSE_ENUM_VALUES_KEPT
+#       on: enum
+#       check: against.values.all(v, v in values)
+#       message: An enum keeps its values; clients store them.
+
+# Which Go rules dedo vet runs (make vet; make check runs it): DEDO, dedo's
+# own, and HOUSE, the house Go rules, as lint does. Without use, both run.
+# go:
+#   use: [DEDO, HOUSE]
+#   disable: [DEDO_GO_EVENT_DECLARED]
+#   rules:
+#     - id: HOUSE_GO_NO_PLATFORM_SDK
+#       forbid_import: example.com/platform-sdk/...
+#       allow_in: [internal/legacy/**]
+#       message: Call the platform services directly.
+
+# Your organisation's guidance for coding agents, which dedo adds to
+# CLAUDE.md and AGENTS.md after its own. Where the two conflict, the
+# annexure wins. dedo upgrade rewrites the copies from these sources, so
+# change the source, not the copy. A url is pinned by its SHA-256, which
+# dedo upgrade prints when it is missing; a path is in this repository.
+# All three are required for every commerce service.
+annexure:
+  # commerce-dedo-rules: house rules win, tenancy, Version header, vendors,
+  # dependencies, auth and observability in the contract.
+  # https://github.com/GoHighLevel/commerce-dedo-rules/blob/v0.17.0/annexure.md
+  - url: https://gohighlevel.github.io/commerce-dedo-rules/v0.17.0/annexure.md
+    sha256: 54484b0dca3af884f536a6b05a7cc7af0bac8164d122e1c188cc530c2a29b691
+  # commerce-auth: commerce.auth.v2 options, wiring iamguard, conditions.
+  # https://github.com/GoHighLevel/commerce-auth/blob/annexure/v0.1.0/annexure.md
+  - url: https://gohighlevel.github.io/commerce-auth/annexure/v0.1.0/annexure.md
+    sha256: 5c727468de679fef6697cb748b8462eeb1f6926fd83a7d21665816c360364323
+  # commerce-obs: commerce.obs.v1 options, tiers, alert routes, dependency
+  # reasons, generating the alerts.
+  # https://github.com/GoHighLevel/commerce-obs/blob/annexure/v0.1.0/annexure.md
+  - url: https://gohighlevel.github.io/commerce-obs/annexure/v0.1.0/annexure.md
+    sha256: 0a09693e6f9a68ec5759a14d2c71240ed4a6a18d946381e94171dc86fe1f8910

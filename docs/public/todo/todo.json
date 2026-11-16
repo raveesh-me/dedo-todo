@@ -1,0 +1,2074 @@
+{
+  "openapi": "3.2.0",
+  "info": {
+    "title": "Todo API",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://services.leadconnectorhq.com"
+    }
+  ],
+  "tags": [
+    {
+      "name": "commerce.todo.tasks.v1",
+      "summary": "Tasks",
+      "description": "Tasks are what a person intends to do, each with an optional deadline by\nwhich it should be done. A task is open until it is completed; an open\ntask whose deadline has passed is overdue.",
+      "kind": "nav"
+    },
+    {
+      "name": "Tasks",
+      "description": "Captures, reads, completes and reopens the caller's tasks, and says which\nof them are overdue.",
+      "parent": "commerce.todo.tasks.v1",
+      "x-audience": "AUDIENCE_EXTERNAL_PUBLIC",
+      "x-owner-team": "commerce-todo"
+    },
+    {
+      "name": "commerce.todo.time_tracking.v1",
+      "summary": "Time tracking",
+      "description": "Time tracking is the time a person spends on their tasks: the one timer\nthey may have running, and the time entries it and they write.",
+      "kind": "nav"
+    },
+    {
+      "name": "Time entries",
+      "description": "Records, lists and deletes the caller's time entries, and calculates the\ntime tracked on a task.",
+      "parent": "commerce.todo.time_tracking.v1",
+      "x-audience": "AUDIENCE_EXTERNAL_PUBLIC",
+      "x-owner-team": "commerce-todo"
+    },
+    {
+      "name": "Timers",
+      "description": "Starts, reads and stops the caller's one running timer.",
+      "parent": "commerce.todo.time_tracking.v1",
+      "x-audience": "AUDIENCE_EXTERNAL_PUBLIC",
+      "x-owner-team": "commerce-todo"
+    }
+  ],
+  "x-tagGroups": [
+    {
+      "name": "Tasks",
+      "tags": [
+        "Tasks"
+      ]
+    },
+    {
+      "name": "Time tracking",
+      "tags": [
+        "Time entries",
+        "Timers"
+      ]
+    }
+  ],
+  "paths": {
+    "/commerce/todo/v1/tasks": {
+      "get": {
+        "operationId": "TaskService_ListTasks",
+        "summary": "List tasks",
+        "description": "Lists the caller's tasks, newest first. Set show to SHOW_OPEN or SHOW_DONE to see only those, or to SHOW_OVERDUE to see only open tasks whose deadline has passed. Use this to find a task's resource name from its title before acting on it. Pages with limit and cursor: pass next_cursor back as cursor until it is empty.\n\nRequires one of the token scopes: `todo/tasks.readonly`.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The most tasks to return; zero returns up to 50, and more than 200 is\nread as 200.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "example": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The next_cursor of the previous page; empty for the first page.",
+            "schema": {
+              "type": "string",
+              "example": "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"
+            }
+          },
+          {
+            "name": "show",
+            "in": "query",
+            "description": "Which tasks to list; unset lists every task, open or done.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SHOW_UNSPECIFIED",
+                "SHOW_OPEN",
+                "SHOW_DONE",
+                "SHOW_OVERDUE"
+              ],
+              "example": "SHOW_OPEN"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTasksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `INVALID_CURSOR`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/ListTasks",
+        "x-error-reasons": [
+          "INVALID_CURSOR"
+        ]
+      },
+      "post": {
+        "operationId": "TaskService_CreateTask",
+        "summary": "Create a task",
+        "description": "Creates a new open task for the caller with a title, optional notes and an optional deadline, and returns it with its resource name (tasks/...). A deadline must not be in the past. Use this when the person mentions something they intend to do.\n\nRequires one of the token scopes: `todo/tasks.write`.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "description": "The ID to give the task, the last part of its resource name: 4 to 63\nlowercase letters, digits and hyphens, starting with a letter. The\nserver picks one when it is empty.",
+            "schema": {
+              "type": "string",
+              "example": "quarterly-report"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Task"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `DEADLINE_IN_PAST`, `TITLE_REQUIRED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict. Reasons: `TASK_ALREADY_EXISTS`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/CreateTask",
+        "x-error-reasons": [
+          "DEADLINE_IN_PAST",
+          "TITLE_REQUIRED",
+          "TASK_ALREADY_EXISTS"
+        ]
+      }
+    },
+    "/commerce/todo/v1/tasks/{task}": {
+      "get": {
+        "operationId": "TaskService_GetTask",
+        "summary": "Get a task",
+        "description": "Returns one of the caller's tasks by its resource name, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w: its title, notes, state (STATE_OPEN or STATE_DONE), deadline and whether it is overdue.\n\nRequires one of the token scopes: `todo/tasks.readonly`.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "description": "Part of `name`, which has the form `tasks/{task}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/GetTask",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND"
+        ]
+      },
+      "delete": {
+        "operationId": "TaskService_DeleteTask",
+        "summary": "Delete a task",
+        "description": "Permanently deletes one of the caller's tasks; it cannot be recovered. A timer running on the task stops and its time entry is kept. Prefer complete_task when the work is finished.\n\nRequires one of the token scopes: `todo/tasks.write`.\n\nMay publish the events: `commerce.todo.tasks.task.deleted`. Each event carries only its type and the name of the resource it is about; consumers fetch the resource through this API.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "description": "Part of `name`, which has the form `tasks/{task}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "query",
+            "description": "A unique ID for this request, such as a UUID. Repeating a delete with\nthe same request_id after a failure succeeds and announces the deletion\nagain, rather than answering not found.",
+            "schema": {
+              "type": "string",
+              "example": "4f8b2c1e-9d3a-4e5f-8a7b-6c5d4e3f2a1b"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteTaskResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. Reasons: `EVENT_NOT_PUBLISHED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.write"
+            ]
+          }
+        ],
+        "x-destructive": true,
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/DeleteTask",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND",
+          "EVENT_NOT_PUBLISHED"
+        ],
+        "x-emits": [
+          "commerce.todo.tasks.task.deleted"
+        ]
+      },
+      "patch": {
+        "operationId": "TaskService_UpdateTask",
+        "summary": "Update a task",
+        "description": "Changes a task's title, notes or deadline; update_mask names the fields to change (title, notes, deadline_time), and a deadline_time named in update_mask but left empty clears the deadline. A deadline can only be set, moved or cleared while the task is open, and never to a time in the past.\n\nRequires one of the token scopes: `todo/tasks.write`.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "description": "Part of `task.name`, which has the form `tasks/{task}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "updateMask",
+            "in": "query",
+            "description": "The fields to change: title, notes or deadline_time. A deadline_time\nnamed here but left empty clears the deadline. Empty changes every\nfield the task sets.",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated lowerCamelCase field paths.",
+              "example": "deadlineTime"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Task"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `DEADLINE_IN_PAST`, `INVALID_UPDATE_MASK`, `TASK_DONE_IMMUTABLE`, `TITLE_REQUIRED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/UpdateTask",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND",
+          "TASK_DONE_IMMUTABLE",
+          "DEADLINE_IN_PAST",
+          "TITLE_REQUIRED",
+          "INVALID_UPDATE_MASK"
+        ]
+      }
+    },
+    "/commerce/todo/v1/tasks/{task}:complete": {
+      "post": {
+        "operationId": "TaskService_CompleteTask",
+        "summary": "Complete a task",
+        "description": "Marks an open task as done. If a timer is running on the task, it stops and its time entry is written, so there is no need to stop it first. A task that is already done cannot be completed again.\n\nRequires one of the token scopes: `todo/tasks.write`.\n\nMay publish the events: `commerce.todo.tasks.task.completed`. Each event carries only its type and the name of the resource it is about; consumers fetch the resource through this API.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "description": "Part of `name`, which has the form `tasks/{task}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Which task to complete.",
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "description": "A unique ID for this request, such as a UUID. Repeating a completion\nwith the same request_id after a failure succeeds and announces it\nagain, rather than answering that the task is already done.",
+                    "example": "4f8b2c1e-9d3a-4e5f-8a7b-6c5d4e3f2a1b"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `TASK_ALREADY_DONE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. Reasons: `EVENT_NOT_PUBLISHED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/CompleteTask",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND",
+          "TASK_ALREADY_DONE",
+          "EVENT_NOT_PUBLISHED"
+        ],
+        "x-emits": [
+          "commerce.todo.tasks.task.completed"
+        ]
+      }
+    },
+    "/commerce/todo/v1/tasks/{task}:reopen": {
+      "post": {
+        "operationId": "TaskService_ReopenTask",
+        "summary": "Reopen a task",
+        "description": "Moves a done task back to open, keeping its deadline. Only a done task can be reopened.\n\nRequires one of the token scopes: `todo/tasks.write`.",
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "description": "Part of `name`, which has the form `tasks/{task}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Which task to reopen.",
+                "enum": [
+                  {}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `TASK_NOT_DONE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/tasks.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.tasks.v1.TaskService/ReopenTask",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND",
+          "TASK_NOT_DONE"
+        ]
+      }
+    },
+    "/commerce/todo/v1/time-entries": {
+      "get": {
+        "operationId": "TimeEntryService_ListTimeEntries",
+        "summary": "List time entries",
+        "description": "Lists the caller's time entries, latest start first. Set task (tasks/...) to see only that task's entries. Pages with limit and cursor: pass next_cursor back as cursor until it is empty.\n\nRequires one of the token scopes: `todo/time-entries.readonly`.",
+        "tags": [
+          "Time entries"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The most entries to return; zero returns up to 50, and more than 200 is\nread as 200.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "example": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The next_cursor of the previous page; empty for the first page.",
+            "schema": {
+              "type": "string",
+              "example": "MDFKRDdaNFE4UjJTM1Q0VjVXNlg3WThaOUE"
+            }
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "description": "Only the entries of this task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "schema": {
+              "type": "string",
+              "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTimeEntriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `INVALID_CURSOR`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/time-entries.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimeEntryService/ListTimeEntries",
+        "x-error-reasons": [
+          "INVALID_CURSOR"
+        ]
+      },
+      "post": {
+        "operationId": "TimeEntryService_CreateTimeEntry",
+        "summary": "Record time by hand",
+        "description": "Records time the caller spent on a task (tasks/...) without a timer, from start_time to end_time; end_time must be after start_time. Time entries are never edited: to correct one, delete it and record a new one.\n\nRequires one of the token scopes: `todo/time-entries.write`.",
+        "tags": [
+          "Time entries"
+        ],
+        "parameters": [
+          {
+            "name": "timeEntryId",
+            "in": "query",
+            "description": "The ID to give the time entry, the last part of its resource name: 4\nto 63 lowercase letters, digits and hyphens, starting with a letter.\nThe server picks one when it is empty.",
+            "schema": {
+              "type": "string",
+              "example": "report-monday-morning"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeEntry"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `INVALID_INTERVAL`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict. Reasons: `TIME_ENTRY_ALREADY_EXISTS`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. Reasons: `TASKS_UNAVAILABLE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/time-entries.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimeEntryService/CreateTimeEntry",
+        "x-error-reasons": [
+          "INVALID_INTERVAL",
+          "TIME_ENTRY_ALREADY_EXISTS",
+          "TASK_NOT_FOUND",
+          "TASKS_UNAVAILABLE"
+        ]
+      }
+    },
+    "/commerce/todo/v1/time-entries/{timeEntry}": {
+      "get": {
+        "operationId": "TimeEntryService_GetTimeEntry",
+        "summary": "Get a time entry",
+        "description": "Returns one of the caller's time entries by its resource name (time-entries/...): the task, its start, end and duration.\n\nRequires one of the token scopes: `todo/time-entries.readonly`.",
+        "tags": [
+          "Time entries"
+        ],
+        "parameters": [
+          {
+            "name": "timeEntry",
+            "in": "path",
+            "description": "Part of `name`, which has the form `time-entries/{timeEntry}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7z4q8r2s3t4v5w6x7y8z9a"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TIME_ENTRY_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/time-entries.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimeEntryService/GetTimeEntry",
+        "x-error-reasons": [
+          "TIME_ENTRY_NOT_FOUND"
+        ]
+      },
+      "delete": {
+        "operationId": "TimeEntryService_DeleteTimeEntry",
+        "summary": "Delete a time entry",
+        "description": "Permanently deletes one of the caller's time entries; it cannot be recovered, and the task's tracked time drops by its duration. Use it with create_time_entry to correct an entry.\n\nRequires one of the token scopes: `todo/time-entries.write`.",
+        "tags": [
+          "Time entries"
+        ],
+        "parameters": [
+          {
+            "name": "timeEntry",
+            "in": "path",
+            "description": "Part of `name`, which has the form `time-entries/{timeEntry}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7z4q8r2s3t4v5w6x7y8z9a"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteTimeEntryResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TIME_ENTRY_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/time-entries.write"
+            ]
+          }
+        ],
+        "x-destructive": true,
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimeEntryService/DeleteTimeEntry",
+        "x-error-reasons": [
+          "TIME_ENTRY_NOT_FOUND"
+        ]
+      }
+    },
+    "/commerce/todo/v1/time-entries:calculateTrackedTime": {
+      "get": {
+        "operationId": "TimeEntryService_CalculateTrackedTime",
+        "summary": "Calculate a task's tracked time",
+        "description": "Returns the total time the caller has tracked on a task (tasks/...) and how many time entries make it up. A running timer is not included until it stops. A task with no entries has zero.\n\nRequires one of the token scopes: `todo/time-entries.readonly`.",
+        "tags": [
+          "Time entries"
+        ],
+        "parameters": [
+          {
+            "name": "task",
+            "in": "query",
+            "description": "The task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculateTrackedTimeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. Reasons: `TASKS_UNAVAILABLE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/time-entries.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimeEntryService/CalculateTrackedTime",
+        "x-error-reasons": [
+          "TASK_NOT_FOUND",
+          "TASKS_UNAVAILABLE"
+        ]
+      }
+    },
+    "/commerce/todo/v1/timers": {
+      "get": {
+        "operationId": "TimerService_ListTimers",
+        "summary": "List running timers",
+        "description": "Lists the caller's running timer, if there is one: the list is empty when no timer is running and never holds more than one. Use it to find what the caller is working on, or the timer's name before stopping it.\n\nRequires one of the token scopes: `todo/timers.readonly`.",
+        "tags": [
+          "Timers"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The most timers to return; zero returns up to 50.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "example": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "The next_cursor of the previous page; empty for the first page.",
+            "schema": {
+              "type": "string",
+              "example": "MDFKRDdZM001TjZQN1E4UjlTMFQxVjJXM1g"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTimersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `INVALID_CURSOR`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/timers.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimerService/ListTimers",
+        "x-error-reasons": [
+          "INVALID_CURSOR"
+        ]
+      }
+    },
+    "/commerce/todo/v1/timers/{timer}": {
+      "get": {
+        "operationId": "TimerService_GetTimer",
+        "summary": "Get a timer",
+        "description": "Returns one of the caller's running timers by its resource name (timers/...): the task it is timing and when it started. A stopped timer is gone: its time is in a time entry. To find the running timer, use list_timers.\n\nRequires one of the token scopes: `todo/timers.readonly`.",
+        "tags": [
+          "Timers"
+        ],
+        "parameters": [
+          {
+            "name": "timer",
+            "in": "path",
+            "description": "Part of `name`, which has the form `timers/{timer}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7y3m5n6p7q8r9s0t1v2w3x"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TIMER_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/timers.readonly"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimerService/GetTimer",
+        "x-error-reasons": [
+          "TIMER_NOT_FOUND"
+        ]
+      }
+    },
+    "/commerce/todo/v1/timers/{timer}:stop": {
+      "post": {
+        "operationId": "TimerService_StopTimer",
+        "summary": "Stop a timer",
+        "description": "Stops one of the caller's running timers (timers/...), found with list_timers, and returns the time entry it wrote, from the timer's start until now. Completing or deleting a task already stops a timer running on it.\n\nRequires one of the token scopes: `todo/timers.write`.",
+        "tags": [
+          "Timers"
+        ],
+        "parameters": [
+          {
+            "name": "timer",
+            "in": "path",
+            "description": "Part of `name`, which has the form `timers/{timer}`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01jd7y3m5n6p7q8r9s0t1v2w3x"
+            }
+          },
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Which running timer to stop.",
+                "enum": [
+                  {}
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntry"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TIMER_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/timers.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimerService/StopTimer",
+        "x-error-reasons": [
+          "TIMER_NOT_FOUND"
+        ]
+      }
+    },
+    "/commerce/todo/v1/timers:startTimer": {
+      "post": {
+        "operationId": "TimerService_StartTimer",
+        "summary": "Start a timer",
+        "description": "Starts timing the caller's work on an open task, named by its resource name (tasks/...), and returns the running timer (timers/...). A person has one running timer at a time: if one is already running this fails with TIMER_ALREADY_RUNNING and that timer keeps going, so stop it first with stop_timer. A done task cannot be timed.\n\nRequires one of the token scopes: `todo/timers.write`.",
+        "tags": [
+          "Timers"
+        ],
+        "parameters": [
+          {
+            "name": "Version",
+            "in": "header",
+            "description": "API Version. Send `v4`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ],
+              "example": "v4"
+            },
+            "example": "v4"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartTimerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "X-Flow-ID": {
+                "description": "Correlates the call across services. Send one to set it.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Reasons: `TASK_NOT_OPEN`, `TIMER_ALREADY_RUNNING`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. The token lacks every required scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found. Reasons: `TASK_NOT_FOUND`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. Reasons: `TASKS_UNAVAILABLE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "todo/timers.write"
+            ]
+          }
+        ],
+        "x-rpc-procedure": "/commerce.todo.time_tracking.v1.TimerService/StartTimer",
+        "x-error-reasons": [
+          "TIMER_ALREADY_RUNNING",
+          "TASK_NOT_OPEN",
+          "TASK_NOT_FOUND",
+          "TASKS_UNAVAILABLE"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CalculateTrackedTimeResponse": {
+        "type": "object",
+        "description": "The time tracked on the task, and how many time entries make it up.",
+        "properties": {
+          "entryCount": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many time entries the task has.",
+            "example": 3
+          },
+          "task": {
+            "type": "string",
+            "description": "The task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+          },
+          "totalDuration": {
+            "type": "string",
+            "description": "The sum of the durations of the task's time entries.",
+            "pattern": "^-?\\d+(\\.\\d+)?s$",
+            "example": "9000s"
+          }
+        }
+      },
+      "DeleteTaskResponse": {
+        "type": "object",
+        "description": "Nothing: the task is deleted.",
+        "enum": [
+          {}
+        ]
+      },
+      "DeleteTimeEntryResponse": {
+        "type": "object",
+        "description": "Nothing: the time entry is deleted.",
+        "enum": [
+          {}
+        ]
+      },
+      "ListTasksResponse": {
+        "type": "object",
+        "description": "One page of tasks.",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "description": "The cursor of the next page; empty on the last page.",
+            "example": "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"
+          },
+          "tasks": {
+            "type": "array",
+            "description": "The tasks, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            },
+            "example": [
+              {
+                "completeTime": "2025-12-03T00:00:00Z",
+                "createTime": "2025-12-01T00:00:00Z",
+                "deadlineTime": "2026-01-01T00:00:00Z",
+                "name": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w",
+                "notes": "Use the numbers from the October close.",
+                "overdue": false,
+                "state": "STATE_OPEN",
+                "title": "Write the quarterly report",
+                "updateTime": "2025-12-02T00:00:00Z"
+              }
+            ]
+          }
+        }
+      },
+      "ListTimeEntriesResponse": {
+        "type": "object",
+        "description": "One page of time entries.",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "description": "The cursor of the next page; empty on the last page.",
+            "example": "MDFKRDdaNFE4UjJTM1Q0VjVXNlg3WThaOUE"
+          },
+          "timeEntries": {
+            "type": "array",
+            "description": "The time entries, latest start first.",
+            "items": {
+              "$ref": "#/components/schemas/TimeEntry"
+            },
+            "example": [
+              {
+                "createTime": "2025-12-03T11:00:01Z",
+                "duration": "3600s",
+                "endTime": "2025-12-03T11:00:00Z",
+                "name": "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a",
+                "origin": "ORIGIN_TIMER",
+                "startTime": "2025-12-03T10:00:00Z",
+                "task": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+              }
+            ]
+          }
+        }
+      },
+      "ListTimersResponse": {
+        "type": "object",
+        "description": "The running timers: none or one.",
+        "properties": {
+          "nextCursor": {
+            "type": "string",
+            "description": "The cursor of the next page; empty on the last page.",
+            "example": ""
+          },
+          "timers": {
+            "type": "array",
+            "description": "The running timers: empty, or the one that is running.",
+            "items": {
+              "$ref": "#/components/schemas/Timer"
+            },
+            "example": [
+              {
+                "name": "timers/01jd7y3m5n6p7q8r9s0t1v2w3x",
+                "startTime": "2025-12-03T10:00:00Z",
+                "task": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+              }
+            ]
+          }
+        }
+      },
+      "StartTimerRequest": {
+        "type": "object",
+        "description": "Which task to start timing.",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The open task to time, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "Status": {
+        "type": "object",
+        "description": "An error. details holds a google.rpc.ErrorInfo whose reason is one of the operation's declared reasons.",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The google.rpc.Code.",
+            "example": 5
+          },
+          "details": {
+            "type": "array",
+            "description": "Messages that carry the error's details, each with the type URL of its message in @type.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "@type": {
+                  "type": "string",
+                  "description": "The type URL of the detail's message, whose fields are the detail's other properties.",
+                  "example": "type.googleapis.com/google.rpc.ErrorInfo"
+                }
+              },
+              "additionalProperties": {}
+            },
+            "example": [
+              {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                "reason": "NOT_FOUND"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "A developer-facing explanation.",
+            "example": "The resource was not found."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "Task": {
+        "type": "object",
+        "description": "Something a person intends to do, with an optional deadline.",
+        "properties": {
+          "completeTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task was last completed; empty while it is open.",
+            "example": "2025-12-03T00:00:00Z",
+            "readOnly": true
+          },
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task was created.",
+            "example": "2025-12-01T00:00:00Z",
+            "readOnly": true
+          },
+          "deadlineTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task should be done by. Optional: a task without a deadline is\nnever overdue. Must not be in the past when it is set.",
+            "example": "2026-01-01T00:00:00Z"
+          },
+          "name": {
+            "type": "string",
+            "description": "The task's resource name, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Anything else worth remembering about the task.",
+            "example": "Use the numbers from the October close."
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "Whether the task is open and its deadline has passed, as of the read.",
+            "example": false,
+            "readOnly": true
+          },
+          "state": {
+            "type": "string",
+            "description": "Whether the task is open or done.",
+            "enum": [
+              "STATE_UNSPECIFIED",
+              "STATE_OPEN",
+              "STATE_DONE"
+            ],
+            "example": "STATE_OPEN",
+            "readOnly": true
+          },
+          "title": {
+            "type": "string",
+            "description": "What is to be done, in a few words: 1 to 200 characters.",
+            "example": "Write the quarterly report"
+          },
+          "updateTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task last changed.",
+            "example": "2025-12-02T00:00:00Z",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "TimeEntry": {
+        "type": "object",
+        "description": "A finished, unchangeable record of time spent on a task, from a start to an end.",
+        "properties": {
+          "createTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the entry was recorded.",
+            "example": "2025-12-03T11:00:01Z",
+            "readOnly": true
+          },
+          "duration": {
+            "type": "string",
+            "description": "How long the work took: end_time minus start_time.",
+            "pattern": "^-?\\d+(\\.\\d+)?s$",
+            "example": "3600s",
+            "readOnly": true
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the work ended; after start_time.",
+            "example": "2025-12-03T11:00:00Z"
+          },
+          "name": {
+            "type": "string",
+            "description": "The time entry's resource name, such as\ntime-entries/01jd7z4q8r2s3t4v5w6x7y8z9a.",
+            "example": "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a"
+          },
+          "origin": {
+            "type": "string",
+            "description": "Whether a timer wrote the entry or a person recorded it by hand.",
+            "enum": [
+              "ORIGIN_UNSPECIFIED",
+              "ORIGIN_TIMER",
+              "ORIGIN_MANUAL"
+            ],
+            "example": "ORIGIN_TIMER",
+            "readOnly": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the work started.",
+            "example": "2025-12-03T10:00:00Z"
+          },
+          "task": {
+            "type": "string",
+            "description": "The task the time was spent on, such as\ntasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+          }
+        },
+        "required": [
+          "task",
+          "startTime",
+          "endTime"
+        ]
+      },
+      "Timer": {
+        "type": "object",
+        "description": "A running timer: which task it is timing, and since when.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The timer's resource name, such as timers/01jd7y3m5n6p7q8r9s0t1v2w3x.",
+            "example": "timers/01jd7y3m5n6p7q8r9s0t1v2w3x"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the timer started.",
+            "example": "2025-12-03T10:00:00Z",
+            "readOnly": true
+          },
+          "task": {
+            "type": "string",
+            "description": "The task being timed, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.",
+            "example": "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w",
+            "readOnly": true
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An access token carrying the operation's scopes."
+      }
+    }
+  }
+}

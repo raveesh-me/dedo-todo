@@ -1,0 +1,211 @@
+syntax = "proto3";
+
+// Web is what the Todo frontend's screens show: the board of a person's
+// tasks with the time tracked on each, and one task's page with its time
+// entries. Only the frontend built from the same commit calls it.
+package commerce.todo.web.v1;
+
+import "buf/validate/validate.proto";
+import "commerce/auth/v2/options.proto";
+import "commerce/obs/v1/options.proto";
+import "dedo/v1/options.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Reads what the frontend's screens show from the Todo API, as the caller:
+// the BFF forwards the caller's own credentials on every call and the API
+// authorizes each one, so the board leaves out what the caller may not
+// read, such as tracked time without the time tracking scopes.
+service BoardService {
+  option (dedo.v1.service) = {
+    // Only the frontend built from the same commit calls it.
+    audience: AUDIENCE_COMPONENT_INTERNAL
+    owner_team: "commerce-todo"
+    title: "Board"
+    service_level: {
+      objectives: {availability: 0.99}
+      window: {seconds: 2419200}
+    }
+  };
+  option (commerce.auth.v2.service) = {tenant: TENANT_LOCATION};
+  option (commerce.obs.v1.service) = {
+    tier: TIER_3
+    alert_route: "commerce-todo-oncall"
+  };
+
+  // Returns the board: one page of the caller's tasks, each with the time
+  // tracked on it, and the timer running now.
+  rpc LoadBoard(LoadBoardRequest) returns (LoadBoardResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/bff/v1/boards:loadBoard"};
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.readonly"
+      errors: {
+        reason: "INVALID_CURSOR"
+        code: INVALID_ARGUMENT
+      }
+      errors: {
+        reason: "BACKEND_UNAVAILABLE"
+        code: UNAVAILABLE
+      }
+      tool: {
+        title: "Load the board"
+        description: "Returns one page of the caller's tasks, each with its tracked time, and the running timer."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+
+  // Returns one task's page: the task, its time entries and the time
+  // tracked on it.
+  rpc LoadTaskPage(LoadTaskPageRequest) returns (LoadTaskPageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (google.api.http) = {get: "/commerce/todo/bff/v1/{task=tasks/*}:loadTaskPage"};
+    option (dedo.v1.method) = {
+      scopes: "todo/tasks.readonly"
+      errors: {
+        reason: "TASK_NOT_FOUND"
+        code: NOT_FOUND
+      }
+      errors: {
+        reason: "BACKEND_UNAVAILABLE"
+        code: UNAVAILABLE
+      }
+      tool: {
+        title: "Load a task's page"
+        description: "Returns one of the caller's tasks with its latest time entries and the time tracked on it."
+        annotations: {
+          read_only_hint: true
+          open_world_hint: false
+        }
+      }
+    };
+  }
+}
+
+// One task as the board and its page show it.
+message TaskCard {
+  option (dedo.v1.message) = {description: "A task as the board shows it: its title, deadline, state and tracked time."};
+
+  // The task's resource name, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 1 [(buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"];
+  // What is to be done.
+  string title = 2 [(buf.validate.field).string.example = "Write the quarterly report"];
+  // Anything else worth remembering about the task.
+  string notes = 3 [(buf.validate.field).string.example = "Use the numbers from the October close."];
+  // Whether the task is done; otherwise it is open.
+  bool done = 4 [(buf.validate.field).bool.example = false];
+  // Whether the task is open and its deadline has passed.
+  bool overdue = 5 [(buf.validate.field).bool.example = false];
+  // When the task should be done by; unset when it has no deadline.
+  google.protobuf.Timestamp deadline_time = 6 [(buf.validate.field).timestamp.example = {seconds: 1767225600}];
+  // When the task was completed; unset while it is open.
+  google.protobuf.Timestamp complete_time = 7 [(buf.validate.field).timestamp.example = {seconds: 1764720000}];
+  // The sum of the task's time entries; a running timer is not included.
+  google.protobuf.Duration tracked_duration = 8 [(buf.validate.field).duration.example = {seconds: 5400}];
+}
+
+// The timer running now, as the board's timer bar shows it.
+message RunningTimer {
+  option (dedo.v1.message) = {description: "The caller's running timer, and the title of the task it is timing."};
+
+  // The timer's resource name, such as timers/01jd7y3m5n6p7q8r9s0t1v2w3x.
+  string timer = 1 [(buf.validate.field).string.example = "timers/01jd7y3m5n6p7q8r9s0t1v2w3x"];
+  // The task being timed, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 2 [(buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"];
+  // The title of the task being timed; empty when the task is not on this
+  // page of the board.
+  string task_title = 3 [(buf.validate.field).string.example = "Write the quarterly report"];
+  // When the timer started.
+  google.protobuf.Timestamp start_time = 4 [(buf.validate.field).timestamp.example = {seconds: 1764756000}];
+}
+
+// One time entry, as a task's page lists it.
+message EntryRow {
+  option (dedo.v1.message) = {description: "A time entry: when it started and ended, and whether a timer wrote it."};
+
+  // The time entry's resource name, such as
+  // time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a.
+  string time_entry = 1 [(buf.validate.field).string.example = "time-entries/01jd7z4q8r2s3t4v5w6x7y8z9a"];
+  // When the work started.
+  google.protobuf.Timestamp start_time = 2 [(buf.validate.field).timestamp.example = {seconds: 1764756000}];
+  // When the work ended.
+  google.protobuf.Timestamp end_time = 3 [(buf.validate.field).timestamp.example = {seconds: 1764759600}];
+  // How long the work took.
+  google.protobuf.Duration duration = 4 [(buf.validate.field).duration.example = {seconds: 3600}];
+  // Whether a person recorded it by hand; otherwise a timer wrote it.
+  bool manual = 5 [(buf.validate.field).bool.example = false];
+}
+
+// The request of LoadBoard.
+message LoadBoardRequest {
+  option (dedo.v1.message) = {description: "Which tasks the board shows, and which page."};
+
+  // Which tasks to show; unset shows every task.
+  Show show = 1 [(google.api.field_behavior) = OPTIONAL];
+  // The most tasks to return; zero returns up to 50.
+  int32 limit = 2 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.example = 50
+  ];
+  // The next_cursor of the previous page; empty for the first page.
+  string cursor = 3 [
+    (google.api.field_behavior) = OPTIONAL,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).string.example = "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"
+  ];
+
+  // Show is which tasks the board shows.
+  enum Show {
+    // Every task, open or done.
+    SHOW_UNSPECIFIED = 0;
+    // Only open tasks.
+    SHOW_OPEN = 1;
+    // Only done tasks.
+    SHOW_DONE = 2;
+    // Only overdue tasks.
+    SHOW_OVERDUE = 3;
+  }
+}
+
+// The response of LoadBoard.
+message LoadBoardResponse {
+  option (dedo.v1.message) = {description: "The board: tasks with their tracked time, and the running timer."};
+
+  // The tasks, newest first.
+  repeated TaskCard tasks = 1;
+  // The caller's running timer; unset when none is running.
+  RunningTimer running_timer = 2;
+  // The cursor of the next page; empty on the last page.
+  string next_cursor = 3 [(buf.validate.field).string.example = "MDFKRDdYMks5TTNONFA1UTZSN1M4VDlWMFc"];
+}
+
+// The request of LoadTaskPage.
+message LoadTaskPageRequest {
+  option (dedo.v1.message) = {description: "Which task's page to load."};
+
+  // The task, such as tasks/01jd7x2k9m3n4p5q6r7s8t9v0w.
+  string task = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (buf.validate.field).string.pattern = "^tasks/[a-z0-9-]+$",
+    (buf.validate.field).string.example = "tasks/01jd7x2k9m3n4p5q6r7s8t9v0w"
+  ];
+}
+
+// The response of LoadTaskPage.
+message LoadTaskPageResponse {
+  option (dedo.v1.message) = {description: "A task, its latest time entries and how many it has."};
+
+  // The task, with its tracked time.
+  TaskCard task = 1;
+  // The task's latest time entries, latest start first.
+  repeated EntryRow time_entries = 2;
+  // How many time entries the task has.
+  int32 entry_count = 3 [(buf.validate.field).int32.example = 3];
+}

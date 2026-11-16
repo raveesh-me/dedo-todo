@@ -1,0 +1,32 @@
+# Image for dedo-todo. The build context is the repository root:
+#   make kind-build            (podman or docker, picked by Makefile.kind)
+#
+# No GOARCH is pinned: the binary is built for the platform of the image being
+# built, so a native build on an arm64 laptop runs natively in kind.
+
+# ---------- build ----------
+FROM docker.io/library/golang:1.26.4-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOFLAGS=-mod=vendor GOCACHE=/root/.cache/go-build
+
+# Some modules are private (GoHighLevel/commerce-auth): the build has no
+# credentials, so make vendors every module on the host into .build/vendor
+# (make kind-vendor) and the image builds from it, offline.
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    test -d .build/vendor/service || { echo "run make kind-vendor first"; exit 1; } && \
+    cp -r .build/vendor/service vendor && \
+    go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/service .
+
+# ---------- runtime ----------
+# distroless static: no shell, no package manager, runs as UID 65532.
+FROM gcr.io/distroless/static-debian13:nonroot
+ARG BUILD_REF=dev
+ARG BUILD_DATE
+LABEL org.opencontainers.image.title="dedo-todo" \
+      org.opencontainers.image.revision="${BUILD_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
+COPY --from=build /out/service /service
+EXPOSE 8080
+USER 65532:65532
+ENTRYPOINT ["/service"]

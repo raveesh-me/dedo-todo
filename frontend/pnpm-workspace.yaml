@@ -1,0 +1,4 @@
+# Settings for pnpm in frontend/; it is a single package, not a workspace.
+# Resolve no version, direct or transitive, published less than two weeks
+# (20160 minutes) ago.
+minimumReleaseAge: 20160
