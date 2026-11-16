@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dedo-todo
+  namespace: dedo-todo
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      # The service never calls the Kubernetes API: no token to steal.
+      automountServiceAccountToken: false
+      containers:
+      - name: service
+        # Images are loaded into kind, never pulled.
+        imagePullPolicy: Never
+        # Telemetry goes to the dev collector, zarf/k8s/dev/otel-collector:
+        # make kind-otel tails it. Other environments set the same standard
+        # variables to their own collector.
+        env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector:4318
+        - name: OTEL_SERVICE_NAME
+          value: dedo-todo
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: deployment.environment.name=dev
