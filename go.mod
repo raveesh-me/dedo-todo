@@ -79,3 +79,6 @@ require (
 )
 
 replace github.com/raveesh-me/dedo-todo/gen/options => ./gen/options
+
+// The frontend is not Go: ./... leaves it out.
+ignore ./frontend

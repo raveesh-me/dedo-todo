@@ -19,9 +19,25 @@ spec:
         # make kind-otel tails it. Other environments set the same standard
         # variables to their own collector.
         env:
+        # Development tokens (alice, bob, reader) instead of iam-backend:
+        # dev only. Every other environment sets IAM_BACKEND_URL.
+        - name: AUTH_MODE
+          value: dev
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres
+              key: DATABASE_URL
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector:4318
         - name: OTEL_SERVICE_NAME
           value: dedo-todo
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: deployment.environment.name=dev
+        # Ready only once the database answers.
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          periodSeconds: 5
+          failureThreshold: 2

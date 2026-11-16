@@ -5,6 +5,8 @@ resources:
 - dev-namespace-limits.yaml
 - postgres
 - service
+- bff
+- frontend
 - otel-collector
 # The namespace is the service's boundary: dev-namespace-limits.yaml bounds
 # it, and Pod Security Admission enforces the "restricted" profile on it, so
